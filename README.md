@@ -8,6 +8,12 @@ give it an endpoint and a model API key, and it runs the whole assessment on its
 registers and logs into an account when it needs one, and probes for access-control flaws,
 injection, server-side request forgery, and denial of service.
 
+<p align="center">
+  <img src="docs/dashboard.png" alt="GradientQL live dashboard — coverage map, activity feed, loot pane, and findings table during a scan" width="880">
+</p>
+
+<p align="center"><em>The live dashboard during a scan (illustrative data).</em></p>
+
 I started this about a year ago. The original plan was to buy a stack of Radeon MI50 GPUs and
 fine-tune a model locally for GraphQL query generation, but that fell through. When Claude Opus 4.6
 came out I revived the idea with cloud models instead. I was short on time, so I built almost all of
@@ -97,6 +103,13 @@ Run `gradientql` with no arguments to open the TUI, it is composed of:
   updates in place: a stats line (step, elapsed time, request rate, findings, model), a coverage map
   of the schema, an activity feed of the model's decisions as they happen, a loot pane with any
   harvested credentials, the current session token, and recorded facts, and a table of findings.
+
+<p align="center">
+  <img src="docs/menu.png" alt="GradientQL menu screen with target, budget, model, and key status" width="760">
+</p>
+<p align="center">
+  <img src="docs/settings.png" alt="GradientQL settings screen" width="760">
+</p>
 
 The coverage map marks each root field as untested, shallow, open, data, dead, or a finding, so you
 can watch the attack surface fill in as the agent works. Pass `--tui` to force this interface
