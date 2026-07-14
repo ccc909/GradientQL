@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+.eggs/
+.coverage
+htmlcov/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Editors and tooling
+.idea/
+.vscode/
+.claude/
+.deepeval/
+*.swp
+
+# Scan artifacts
+output/
+
+# Env / secrets
+.env
+*.local.json
+*.local
+config/api_key.local
+
+# OS
+.DS_Store
+Thumbs.db

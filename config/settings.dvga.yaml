@@ -1,0 +1,28 @@
+# Example config for a local DVGA instance (Damn Vulnerable GraphQL Application).
+# Start DVGA yourself, then:
+#   python -m gradientql --settings config/settings.dvga.yaml
+target:
+  url: "http://localhost:5013/graphql"
+  headers: {}
+  csrf:
+    enabled: false
+
+llm:
+  provider: "openrouter"
+  base_url: "https://openrouter.ai/api/v1"
+  api_key_env: "OPENROUTER_API_KEY"
+  attacker_model: "minimax/minimax-m3"
+  temperature: 0.7
+  # Reasoning models spend output budget on hidden reasoning tokens, so keep the ceiling high.
+  attacker_max_tokens: 28192
+
+scanner:
+  budget: 250
+  oob:
+    enabled: true
+    provider: "interactsh"
+    collaborator_domain: "oast.fun"
+    token: ""
+
+embeddings:
+  model: "all-MiniLM-L6-v2"

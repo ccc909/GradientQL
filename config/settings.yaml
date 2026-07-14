@@ -1,0 +1,73 @@
+# GradientQL configuration. Copy it, then point --url (or the menu) at a target you are
+# authorized to test. Every key falls back to a built-in default, so this file only needs the
+# settings you want to change.
+
+target:
+  url: "https://your-target.example/graphql"
+  # Sent on every request to the target (auth token, cookies, custom headers).
+  headers: {}          # e.g. {Authorization: "Bearer <token>"}
+  csrf:
+    enabled: false     # fetch a CSRF token and attach it to every request
+    header_name: "X-CSRF-Token"
+    source: "meta"     # where to read the token: meta | cookie | header
+    meta_name: "csrf-token"
+
+http:
+  # Route target traffic through a proxy (Burp, mitmproxy). Leave "" for a direct connection.
+  proxy: ""            # e.g. "http://127.0.0.1:8080"
+  timeout: 30          # seconds per request
+  delay: 0.0           # seconds to wait between requests (rate limiting; also eases target load)
+  verify_tls: true     # set false for self-signed certs or an intercepting proxy
+  retries: 2
+
+llm:
+  provider: "openrouter"
+  base_url: "https://openrouter.ai/api/v1"
+  # Key resolution: llm.api_key here, then config/api_key.local (gitignored), then this env var.
+  api_key_env: "OPENROUTER_API_KEY"
+  # api_key: ""
+  attacker_model: "z-ai/glm-5.2"
+  temperature: 0.7
+  # Reasoning models spend part of the output budget on hidden reasoning tokens; keep it generous.
+  attacker_max_tokens: 16384
+  timeout: 120
+  max_retries: 2
+  # JSON-mode constraint bound to every call. Set to null if your provider rejects it.
+  response_format: { type: json_object }
+  circuit_breaker:
+    threshold: 3       # consecutive LLM failures before the breaker opens
+    cooldown: 60       # seconds before it retries
+  cache:
+    memoize_responses: false
+
+scanner:
+  budget: 60           # max steps; each step is one model call and at most one request
+  # trace: true        # write output/agent_trace_<ts>.{jsonl,md}; the --trace flag does the same
+  # verbose: true      # untruncated console thoughts; the -v flag does the same
+  safe_mode: false     # disable the destructive techniques (denial of service) in one switch
+  attacks:             # turn individual techniques on/off
+    injection: true    # SQLi / command / SSTI fuzzing
+    ssrf: true         # out-of-band SSRF probing
+    dos: false         # resource-exhaustion (can knock a target over; off by default)
+    smuggle: true      # request smuggling
+    csrf: true         # CSRF checks
+    jwt: true          # JWT forging / weak-secret attacks
+    brute: true        # credential / coupon brute-forcing (safe_mode disables it)
+    bola: true         # systematic access-control (BOLA/BFLA) testing across identities
+  fuzz:
+    max_payloads: 14   # payload battery cap per fuzz action
+  obs_max_chars: 2000  # response-body characters fed back to the model
+  tuning:              # steering knobs; read the docs before changing these
+    field_retry_cap: 8       # per-field probe ceiling before the backstop blocks
+    dup_fail_cap: 2          # identical-failure resends before a hard block
+    coverage_nudge_every: 8  # how often the coverage reminder fires (in steps)
+  oob:
+    # Blind SSRF/XXE confirmation via interactsh public servers (no self-hosting).
+    enabled: true
+    provider: "interactsh"
+    collaborator_domain: "oast.fun"
+    token: ""
+
+embeddings:
+  model: "all-MiniLM-L6-v2"   # schema-search embedding model, downloaded on first run
+  min_fields: 80              # only build the semantic index above this many schema fields

@@ -1,0 +1,81 @@
+[project]
+name = "gradientql"
+version = "0.1.0"
+description = "Autonomous, agent-only GraphQL vulnerability scanner"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "GradientQL contributors" }]
+keywords = [
+    "graphql",
+    "security",
+    "vulnerability-scanner",
+    "dast",
+    "appsec",
+    "pentest",
+    "llm",
+    "agent",
+    "bola",
+    "idor",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+# A single emergent LLM loop (langchain-openai) drives the scan; FAISS backs schema search.
+dependencies = [
+    "langchain>=0.3.0,<1.0",
+    "langchain-openai>=0.3.0",
+    "langchain-community>=0.3.0",
+    "graphql-core>=3.2.0,<3.3",
+    "faiss-cpu>=1.7.4",
+    "sentence-transformers>=2.3.0",
+    "numpy>=1.26",
+    "requests>=2.31.0",
+    "tenacity>=8.2.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "textual>=0.60",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-asyncio", "ruff", "mypy"]
+
+# cli() parses argv; main() is the callable API and ignores sys.argv, so the script targets cli.
+[project.scripts]
+gradientql = "gradientql.scanner.cli:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gradientql*"]
+
+[tool.setuptools.package-data]
+gradientql = ["assets/*.ans"]
+
+[tool.ruff.lint.per-file-ignores]
+# The entry points suppress noisy TF/Protobuf/Keras warnings before importing the heavy ML
+# stack, so their module-level imports legitimately follow the filterwarnings() calls.
+"gradientql/scanner/cli.py" = ["E402"]
+"gradientql/__main__.py" = ["E402"]
+# Tests use compact mock classes (semicolon bodies) and discard call results they only assert
+# on via side effects.
+"tests/*" = ["E702", "F841"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,4 @@
+# Copy this file to `api_key.local` and paste your OpenRouter API key on its own
+# line below (no quotes, no "api_key:" prefix). `api_key.local` is gitignored, so
+# your real key never gets committed. Every config (settings.yaml, settings.dvga.yaml,
+# ...) reads the first non-comment line of `api_key.local` as the key.
