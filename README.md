@@ -6,7 +6,8 @@
 GradientQL is a vibe powered GraphQL vulnerability scanner driven by a single language model. You 
 give it an endpoint and a model API key, and it runs the whole assessment on its own: it reads the schema,
 registers and logs into an account when it needs one, and probes for access-control flaws,
-injection, server-side request forgery, and denial of service.
+injection, server-side request forgery, JWT forgery, request smuggling, CSRF, credential
+brute-forcing, and denial of service.
 
 <p align="center">
   <img src="docs/dashboard.png" alt="GradientQL live dashboard — coverage map, activity feed, loot pane, and findings table during a scan" width="880">
