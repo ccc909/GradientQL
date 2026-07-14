@@ -46,11 +46,9 @@ pip install -e ".[dev]"
 
 The scanner looks for the model API key in three places and uses the first one it finds:
 
-1. The environment variable named by `llm.api_key_env`, which defaults to `OPENROUTER_API_KEY`.
+1. The `llm.api_key` field in your settings file.
 2. A file at `config/api_key.local`, which is ignored by git.
-3. The `llm.api_key` field in your settings file.
-
-```
+3. The environment variable named by `llm.api_key_env`, which defaults to `OPENROUTER_API_KEY`.
 
 ## Running a scan
 
@@ -211,10 +209,6 @@ near the top before you run anything.
 
 Runs are not deterministic. The model drives, so two scans of the same target will differ, and
 whether a bug is found depends on the model reasoning its way to it.
-
-The path from a disposable mailbox to an authenticated broken-object-level test is covered by unit
-tests with mocks. It has not yet been checked end to end against a live signup that requires email
-confirmation.
 
 Some models refuse to attack a named live domain. When that happens the run stops after a few
 refusals rather than spending the whole budget.
