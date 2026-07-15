@@ -11,11 +11,11 @@ brute-forcing, and denial of service.
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="docs/menu.png" alt="GradientQL menu" width="440"><br><sub>Menu: set a target, then start a scan</sub></td>
-    <td align="center" width="50%"><img src="docs/settings.png" alt="GradientQL settings" width="440"><br><sub>Settings : budget, model, proxy, per-technique attacks</sub></td>
+    <td align="center" width="50%"><img src="docs/menu.svg" alt="GradientQL menu" width="440"><br><sub>Menu: set a target, then start a scan</sub></td>
+    <td align="center" width="50%"><img src="docs/settings.svg" alt="GradientQL settings" width="440"><br><sub>Settings: budget, model, proxy, per-technique attacks</sub></td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><img src="docs/dashboard.png" alt="GradientQL live dashboard" width="900"><br><sub>Live dashboard during a scan: coverage map, activity feed, loot, and findings (illustrative data)</sub></td>
+    <td align="center" colspan="2"><img src="docs/dashboard.svg" alt="GradientQL live dashboard" width="960"><br><sub>Live dashboard during a scan: coverage map, activity feed, loot, and findings (illustrative data)</sub></td>
   </tr>
 </table>
 
