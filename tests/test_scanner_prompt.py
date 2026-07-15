@@ -43,6 +43,14 @@ def test_build_prompt_contains_methodology(sample_introspection_result):
     p = prompt.build_prompt(_ctx(sm))
     assert "BOLA/IDOR" in p          # methodology present
     assert "sweep" in p              # action menu present
+
+
+def test_build_prompt_surfaces_operator_steering(sample_introspection_result):
+    sm = parse_schema(sample_introspection_result)
+    assert "OPERATOR STEERING" not in prompt.build_prompt(_ctx(sm))
+    p = prompt.build_prompt(_ctx(sm, steering=["search for DoS now", "you missed importPaste"]))
+    assert "OPERATOR STEERING" in p
+    assert "search for DoS now" in p and "you missed importPaste" in p
     assert "__typename" in p         # reachability guidance present
     # injection playbook + fuzz action are surfaced
     assert "fuzz" in p

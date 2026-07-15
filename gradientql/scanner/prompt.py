@@ -66,6 +66,7 @@ generateCustomerToken / login mutations to brute-force PAST per-request rate lim
 
 CURRENT IDENTITY (sent on every graphql call): {identity}
 BUDGET: {remaining} actions left.
+{steering}
 
 HARVESTED (actual values — use these to chain auth / IDOR):
   {harvested}
@@ -207,6 +208,12 @@ def build_prompt(ctx: dict[str, Any]) -> str:
                          untouched_sweepable=untouched_sweepable, require_args=require_args)
     high_value = render_high_value(sm, ledger) or "  (none detected for this schema)"
     ident = ", ".join(ctx["identity"].keys()) or "anonymous (no auth)"
+    steering = ctx.get("steering") or []
+    steer_block = ""
+    if steering:
+        lines = "\n".join(f"  -> {m}" for m in steering)
+        steer_block = ("=== OPERATOR STEERING (a human is watching this run and telling you what to do "
+                       "— act on this NOW, ahead of your own plan) ===\n" + lines + "\n=== end steering ===")
     fix = ""
     if ctx.get("fixation"):
         fix = f"\n  ⚠ {ctx['fixation']}"
@@ -218,7 +225,7 @@ def build_prompt(ctx: dict[str, Any]) -> str:
                          for v in (ctx.get("vulns") or [])) or "  (none yet)"
     return _SYSTEM.format(
         url=ctx["target_url"], identity=ident, remaining=ctx["remaining"],
-        harvested=harv, credentials=creds, state=state, fixation=fix,
+        harvested=harv, credentials=creds, state=state, fixation=fix, steering=steer_block,
         notes=notes, overview=overview, high_value=high_value, history=hist,
         decisions=decisions, recorded=recorded,
     )

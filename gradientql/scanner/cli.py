@@ -17,6 +17,41 @@ from ..utils.logger import setup_logging
 from .run import run_scan
 
 
+def _stdin_steer(logger: Any) -> Any:
+    """In an interactive terminal, return a steer() callback fed by lines typed on stdin.
+
+    A background reader thread queues each line; the scanner drains the queue once per step and
+    injects the messages as operator instructions. Returns None when stdin is not a TTY.
+    """
+    if not sys.stdin.isatty():
+        return None
+    import queue
+    import threading
+
+    q: queue.Queue = queue.Queue()
+
+    def _reader() -> None:
+        for line in sys.stdin:
+            msg = line.strip()
+            if msg:
+                q.put(msg)
+
+    threading.Thread(target=_reader, daemon=True).start()
+    logger.info("Steering: type a message + Enter at any time to redirect the agent "
+                "(e.g. 'search for DoS now', or 'you missed the upload field').")
+
+    def _drain() -> list[str]:
+        out: list[str] = []
+        try:
+            while True:
+                out.append(q.get_nowait())
+        except queue.Empty:
+            pass
+        return out
+
+    return _drain
+
+
 def main(settings_path: str | None = None, target_url: str | None = None,
          trace: Any = None, verbose: bool = False) -> dict[str, Any]:
     logger = setup_logging("INFO")
@@ -47,7 +82,7 @@ def main(settings_path: str | None = None, target_url: str | None = None,
     logger.info("LLM: %s via %s",
                 settings["llm"].get("attacker_model", "?"), settings["llm"].get("provider", "?"))
 
-    return run_scan(settings, url)
+    return run_scan(settings, url, steer=_stdin_steer(logger))
 
 
 def cli() -> None:
