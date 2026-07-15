@@ -124,7 +124,8 @@ def _accumulate_tokens(acc: dict[str, Any], msg: Any) -> None:
 
 def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, budget: int,
         trace: Any = None, verbose: bool = False, progress_cb: Any = None,
-        should_stop: Any = None, steer: Any = None) -> dict[str, Any]:
+        should_stop: Any = None, steer: Any = None, run_id: str | None = None,
+        resume: dict[str, Any] | None = None) -> dict[str, Any]:
     """Drive the attacker LLM's decision loop for up to `budget` steps.
 
     Streams findings to the reporter as they are confirmed and, when `trace` is
@@ -153,21 +154,28 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         _stream=append_vuln_stream, _stream_retract=append_vuln_retraction,
     )
 
-    _am = auth_mutations(schema_map)
-    if _am:
-        ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])
-                         + ") — the signup/login auth chain is viable here.")
+    start_step = 0
+    if resume is not None:
+        from .checkpoint import restore_ctx
+        start_step = restore_ctx(ctx, resume)
+        logger.info("AGENT: resumed run %s at step %d with %d prior finding(s)",
+                    run_id or "?", start_step, len(ctx.vulns))
     else:
-        ctx.facts.append("NO anonymous token-minting mutation in this schema (no login/register/token "
-                         "mutation) — auth is OUT-OF-BAND (REST/OIDC). Do NOT hunt a GraphQL login; focus "
-                         "on unauth data exposure, injection, SSRF, DoS.")
-    _sub = schema_map.get("_subscription_type")
-    if _sub:
-        _subf = [f for f in (schema_map.get(_sub) or {}) if not str(f).startswith("_")]
-        ctx.facts.append(f"A SUBSCRIPTION root ({_sub}: {', '.join(_subf[:6]) or '?'}) exists — a real "
-                         "attack surface (auth-over-subscription, connection DoS) but it needs a WebSocket/"
-                         "SSE transport this tool can't drive over HTTP. NOTE it as untested; don't burn "
-                         "steps trying to query it over POST.")
+        _am = auth_mutations(schema_map)
+        if _am:
+            ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])
+                             + ") — the signup/login auth chain is viable here.")
+        else:
+            ctx.facts.append("NO anonymous token-minting mutation in this schema (no login/register/token "
+                             "mutation) — auth is OUT-OF-BAND (REST/OIDC). Do NOT hunt a GraphQL login; focus "
+                             "on unauth data exposure, injection, SSRF, DoS.")
+        _sub = schema_map.get("_subscription_type")
+        if _sub:
+            _subf = [f for f in (schema_map.get(_sub) or {}) if not str(f).startswith("_")]
+            ctx.facts.append(f"A SUBSCRIPTION root ({_sub}: {', '.join(_subf[:6]) or '?'}) exists — a real "
+                             "attack surface (auth-over-subscription, connection DoS) but it needs a WebSocket/"
+                             "SSE transport this tool can't drive over HTTP. NOTE it as untested; don't burn "
+                             "steps trying to query it over POST.")
 
     nudge_every = settings.get("scanner", {}).get("tuning", {}).get(
         "coverage_nudge_every", _COVERAGE_NUDGE_EVERY)
@@ -213,8 +221,34 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             tracer.step(pending)
         pending = None
 
-    step = 0
-    for step in range(budget):
+    from . import checkpoint as _cp
+    cp_on = run_id is not None and _cp.is_enabled(settings)
+    cp_every = _cp.interval(settings)
+    cp_path = _cp.checkpoint_path(settings, run_id) if cp_on else None
+
+    def _save_cp(s: int, complete: bool = False) -> None:
+        if not cp_on or s < 0:
+            return
+        try:
+            _cp.save(cp_path, run_id=run_id, ctx=ctx, schema_map=schema_map,
+                     target_url=target_url, step=s, budget=budget, complete=complete)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("AGENT: checkpoint save failed at step %d: %s", s, e)
+
+    if resume is not None:
+        # techniques_used is loop-local, not in ctx; rebuild it from the decision log so a resumed
+        # run doesn't treat already-used endpoint tools (dos/smuggle/csrf) as unused — which would
+        # re-fire them and re-defer a legitimate `done`. Decision lines are "[step] name target ...".
+        for _line in ctx.decisions:
+            _rest = _line.split("]", 1)[1].strip() if "]" in _line else ""
+            _nm = _rest.split(" ", 1)[0] if _rest else ""
+            if _nm in _ARSENAL_TOOLS:
+                techniques_used.add(_nm)
+
+    run_complete = False
+    step = start_step - 1
+    last_completed = start_step - 1
+    for step in range(start_step, budget):
         if should_stop is not None and should_stop():
             logger.info("AGENT: stop requested — ending scan at step %d", step)
             break
@@ -303,9 +337,25 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                     break
                 time.sleep(_CIRCUIT_TIMEOUT)
                 continue
-            consec_llm_error += 1
             detail = llm_error or "provider returned no response"
-            is_rate_limit = "429" in detail.lower() or "rate limit" in detail.lower()
+            low = detail.lower()
+            is_rate_limit = "429" in low or "rate limit" in low
+            is_length = ("length limit" in low or "completionusage" in low
+                         or "finish_reason=length" in low or "'length'" in low)
+
+            if is_length:
+                # Deterministic truncation: the model burned its whole output budget (a reasoning
+                # model overshooting) without emitting a parseable action. Retrying the identical
+                # request just spends another full-length generation, so stop now and keep the
+                # findings so far rather than grinding _LLM_ERROR_ABORT identical multi-minute
+                # calls. The fix for a recurring case is a higher llm.attacker_max_tokens.
+                cap = settings.get("llm", {}).get("attacker_max_tokens", 16384)
+                logger.warning("AGENT aborting at step %d: response truncated at the %s-token output limit "
+                               "— raise llm.attacker_max_tokens to give the model more room", step, cap)
+                ctx.log(f"[{step}] response truncated at the token limit — aborting (raise attacker_max_tokens)")
+                break
+
+            consec_llm_error += 1
             logger.warning("AGENT LLM call failed at step %d (%d/%d): %s",
                            step, consec_llm_error, _LLM_ERROR_ABORT, detail)
             ctx.log(f"[{step}] LLM call failed: {detail}")
@@ -391,6 +441,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             ctx.decisions.append(_decision_line(step, "done", args, thought,
                                                 f"STOP: {str(args.get('reason', ''))[:120]}"))
             logger.info("AGENT done: %s", args.get("reason", ""))
+            run_complete = True
             break
 
         if name in _NONPROBE_ACTIONS and noprobe_streak >= _NOPROBE_CAP and not degraded:
@@ -435,6 +486,12 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 and step - ctx.oob_injected_at >= _OOB_CHECK_DELAY):
             _auto_oob_check(ctx)
 
+        last_completed = step
+        if cp_on and (step + 1) % cp_every == 0:
+            _save_cp(step)
+    else:
+        run_complete = True  # for-loop exhausted the budget with no early break
+
     _finalize_trace()
     if tracer is not None:
         tracer.close({
@@ -444,6 +501,9 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             "vuln_types": [v.get("vuln_type") for v in ctx.vulns],
         })
 
+    _save_cp(last_completed, complete=run_complete)
+
     return {"vulnerabilities": ctx.vulns, "interactions": ctx.interactions,
             "steps": min(step + 1, budget), "covered_count": len(ctx.covered),
-            "notes": ctx.notes, "target_url": target_url, "tokens": ctx.tokens}
+            "notes": ctx.notes, "target_url": target_url, "tokens": ctx.tokens,
+            "run_id": run_id}

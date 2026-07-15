@@ -28,8 +28,11 @@ llm:
   # api_key: ""
   attacker_model: "qwen/qwen3.7-max"
   temperature: 0.7
-  # Reasoning models spend part of the output budget on hidden reasoning tokens; keep it generous.
-  attacker_max_tokens: 16384
+  # Cap on model output per step. This is a CEILING, not a target: you pay for tokens actually
+  # generated, so a high value costs nothing on normal steps and just gives reasoning models room
+  # to finish. Set it near the model's max output. If a response is still truncated at this limit,
+  # the run aborts (keeping findings) instead of retrying the identical call — raise it if so.
+  attacker_max_tokens: 64000
   timeout: 120
   max_retries: 2
   # JSON-mode constraint bound to every call. Set to null if your provider rejects it.
@@ -44,6 +47,10 @@ scanner:
   budget: 60           # max steps; each step is one model call and at most one request
   # trace: true        # write output/agent_trace_<ts>.{jsonl,md}; the --trace flag does the same
   # verbose: true      # untruncated console thoughts; the -v flag does the same
+  checkpoint:          # auto-save resumable snapshots so a long run survives a stall or Ctrl-C
+    enabled: true      # every run gets a unique id; resume with `gradientql --resume <run-id>`
+    every: 5           # save every N steps (and once at the end)
+    dir: "output/checkpoints"
   safe_mode: false     # disable the destructive techniques (denial of service) in one switch
   attacks:             # turn individual techniques on/off
     injection: true    # SQLi / command / SSTI fuzzing

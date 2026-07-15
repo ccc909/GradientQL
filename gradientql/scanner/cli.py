@@ -53,7 +53,8 @@ def _stdin_steer(logger: Any) -> Any:
 
 
 def main(settings_path: str | None = None, target_url: str | None = None,
-         trace: Any = None, verbose: bool = False) -> dict[str, Any]:
+         trace: Any = None, verbose: bool = False, resume: str | None = None,
+         max_tokens: int | None = None) -> dict[str, Any]:
     logger = setup_logging("INFO")
     logger.info("=== GradientQL: Autonomous GraphQL Vulnerability Scanner (agent mode) ===")
 
@@ -65,12 +66,36 @@ def main(settings_path: str | None = None, target_url: str | None = None,
         settings.setdefault("scanner", {})["trace"] = trace
     if verbose:
         settings.setdefault("scanner", {})["verbose"] = True
+    if max_tokens is not None:
+        if max_tokens <= 0:
+            logger.error("--max-tokens must be a positive integer (got %d).", max_tokens)
+            sys.exit(1)
+        settings.setdefault("llm", {})["attacker_max_tokens"] = int(max_tokens)
+        logger.info("Max output tokens overridden via --max-tokens: %d", int(max_tokens))
 
     if not settings.get("llm", {}).get("api_key"):
         api_key_env = settings.get("llm", {}).get("api_key_env", "OPENROUTER_API_KEY")
         logger.error("No API key found. Set the %s environment variable, put it in "
                      "config/api_key.local, or set llm.api_key in the settings file.", api_key_env)
         sys.exit(1)
+
+    from . import checkpoint as _cp
+    resume_data: dict[str, Any] | None = None
+    if resume:
+        cpf = _cp.resolve(settings, resume)
+        if cpf is None:
+            logger.error("No checkpoint found for --resume %r (looked in %s).",
+                         resume, _cp.checkpoint_dir(settings))
+            sys.exit(1)
+        try:
+            resume_data = _cp.load(cpf)
+        except (ValueError, OSError) as e:  # JSONDecodeError is a ValueError
+            logger.error("Checkpoint %s is unreadable (%s).", cpf, str(e)[:80])
+            sys.exit(1)
+        if not target_url and resume_data.get("target_url"):
+            settings.setdefault("target", {})["url"] = resume_data["target_url"]
+        logger.info("Resuming run %s from step %d (%s)",
+                    resume_data.get("run_id"), int(resume_data.get("step", -1)) + 1, cpf)
 
     url = settings.get("target", {}).get("url")
     if not url:
@@ -79,10 +104,22 @@ def main(settings_path: str | None = None, target_url: str | None = None,
 
     logger.info("Target: %s", url)
     logger.info("Budget: %d steps", int(settings.get("scanner", {}).get("budget", 60)))
-    logger.info("LLM: %s via %s",
-                settings["llm"].get("attacker_model", "?"), settings["llm"].get("provider", "?"))
+    logger.info("LLM: %s via %s (max output %s tokens)",
+                settings["llm"].get("attacker_model", "?"), settings["llm"].get("provider", "?"),
+                settings["llm"].get("attacker_max_tokens", "?"))
 
-    return run_scan(settings, url, steer=_stdin_steer(logger))
+    run_id = resume_data.get("run_id") if resume_data else _cp.new_run_id()
+    if _cp.is_enabled(settings):
+        logger.info("Run ID: %s  (checkpoint every %d steps -> %s)",
+                    run_id, _cp.interval(settings), _cp.checkpoint_path(settings, run_id))
+    try:
+        return run_scan(settings, url, steer=_stdin_steer(logger), run_id=run_id, resume=resume_data)
+    except KeyboardInterrupt:
+        if _cp.is_enabled(settings) and _cp.checkpoint_path(settings, run_id).is_file():
+            logger.warning("Interrupted. Resume this run with:  gradientql --resume %s", run_id)
+        elif _cp.is_enabled(settings):
+            logger.warning("Interrupted before the first checkpoint was written — nothing to resume.")
+        raise
 
 
 def cli() -> None:
@@ -98,21 +135,29 @@ def cli() -> None:
                              ".jsonl/.md trace. Bare --trace writes output/agent_trace_<ts>.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Log each step's full thought and observations to the console.")
+    parser.add_argument("--resume", type=str, default=None, metavar="RUN_ID",
+                        help="Resume a previous run from its last checkpoint (a run id like "
+                             "gql-... or a checkpoint file path). See output/checkpoints/.")
+    parser.add_argument("--max-tokens", type=int, default=None, metavar="N",
+                        help="Override the model's max output tokens per step "
+                             "(llm.attacker_max_tokens in settings).")
     parser.add_argument("--tui", action="store_true",
                         help="Force the interactive banner/menu/live-dashboard UI.")
     parser.add_argument("--no-tui", action="store_true",
                         help="Force the plain log output even in a terminal.")
     args = parser.parse_args()
 
-    interactive = sys.stdout.isatty() and not args.no_tui
-    if args.tui or (args.url is None and interactive):
+    interactive = sys.stdout.isatty() and not args.no_tui and args.resume is None
+    if args.resume is None and (args.tui or (args.url is None and interactive)):
         if not sys.stdout.isatty():
-            main(settings_path=args.settings, target_url=args.url, trace=args.trace, verbose=args.verbose)
+            main(settings_path=args.settings, target_url=args.url, trace=args.trace,
+                 verbose=args.verbose, max_tokens=args.max_tokens)
             return
         from ..tui import launch
         launch(settings_path=args.settings, target_url=args.url, trace=args.trace, verbose=args.verbose)
         return
-    main(settings_path=args.settings, target_url=args.url, trace=args.trace, verbose=args.verbose)
+    main(settings_path=args.settings, target_url=args.url, trace=args.trace, verbose=args.verbose,
+         resume=args.resume, max_tokens=args.max_tokens)
 
 
 if __name__ == "__main__":

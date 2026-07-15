@@ -18,8 +18,8 @@ SIZE = (150, 42)
 
 DEMO_SETTINGS = {
     "target": {"url": "https://api.example.shop/graphql"},
-    "scanner": {"budget": 60},
-    "llm": {"api_key": "sk-demo", "attacker_model": "qwen/qwen3.7-max"},
+    "scanner": {"budget": 60, "checkpoint": {"enabled": True, "every": 5}},
+    "llm": {"api_key": "sk-demo", "attacker_model": "qwen/qwen3.7-max", "attacker_max_tokens": 64000},
     "http": {},
 }
 
@@ -81,6 +81,7 @@ async def main() -> None:
         await pilot.pause()
         scr = app.screen
         scr._start = tui.time.monotonic() - 105
+        scr._log("run gql-20260715-2130-a3f9 · auto-checkpoint every 5 steps", f"bold {tui.GOLD}")
         scr._update(33, 60, _demo_ctx())
         scr._set_header("SCANNING", f"bold {tui.GOLD_HI}", DEMO_SETTINGS["target"]["url"])
         await pilot.pause()
