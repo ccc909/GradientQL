@@ -1,4 +1,4 @@
-"""Schema-aware query pre-validation — reject a query the schema already proves invalid before sending."""
+"""Reject queries the schema proves invalid before sending."""
 
 from __future__ import annotations
 

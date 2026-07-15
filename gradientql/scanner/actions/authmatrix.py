@@ -46,7 +46,7 @@ def handle_auth_test(ctx: ActionContext, args: dict) -> Result:
     query = str(args.get("query", "")).strip()
     variables = args.get("variables") if isinstance(args.get("variables"), dict) else {}
     if not query:
-        msg = ("auth_test needs {query} — a SINGLE field query/mutation to run under "
+        msg = ("auth_test needs {query} - a SINGLE field query/mutation to run under "
                "anonymous / your current token / a forged-admin token and diff the results "
                "(use it on auth-sensitive fields instead of one graphql call).")
         ctx.log(f"[{ctx.step}] {msg}")
@@ -93,7 +93,7 @@ def handle_auth_test(ctx: ActionContext, args: dict) -> Result:
             and not _is_ack(raw.get("anon"))
             and any(o in _BLOCKED for o in authed_outcomes)):
         if ctx.record("Broken Function-Level Authorization (sensitive field reachable unauthenticated)",
-                      pf, f"`{pf}` returned DATA with NO authentication while an authed identity is blocked — "
+                      pf, f"`{pf}` returned DATA with NO authentication while an authed identity is blocked - "
                       + "; ".join(f"{lbl}={o}" for lbl, o, _ in rows), 3.0):
             finding_type = "Broken Function-Level Authorization"
 
@@ -149,7 +149,7 @@ def handle_batch_brute(ctx: ActionContext, args: dict) -> Result:
     root_field = re.match(r"\s*(?:[A-Za-z_]\w*\s*:\s*)?([A-Za-z_]\w*)", template)
     if root_field and re.search(r"delete|remove|drop|purge|wipe|destroy|deactivate|truncate",
                                 root_field.group(1), re.IGNORECASE):
-        msg = (f"batch_brute REFUSED: '{root_field.group(1)}' looks destructive — "
+        msg = (f"batch_brute REFUSED: '{root_field.group(1)}' looks destructive - "
                "aliasing it N× only amplifies damage, it doesn't brute-force a secret. Target a "
                "login/verify/token field, or send a single destructive op via graphql if intended.")
         ctx.log(f"[{ctx.step}] {msg}")
@@ -183,7 +183,7 @@ def handle_batch_brute(ctx: ActionContext, args: dict) -> Result:
         ctx.record("Credential/OTP brute-force hit (aliased batch)", template[:40],
                    f"successful value(s): {hits[:3]}", 3.0)
     head = "⚠ " if (bypass or hits) else ""
-    cap_note = (f" | cap 50 reached, {raw_n - 50} value(s) NOT sent — re-run batch_brute with the rest"
+    cap_note = (f" | cap 50 reached, {raw_n - 50} value(s) NOT sent - re-run batch_brute with the rest"
                 if raw_n > 50 else "")
     obs = (f"{head}batch_brute {op} ×{len(values)} -> processed {processed}/{len(values)}"
            + (f", HITS={', '.join(map(str, hits[:5]))}" if hits else ", no successful value")

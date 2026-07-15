@@ -1,4 +1,4 @@
-"""Out-of-band (OOB) interaction scaffolding for BLIND SSRF / XXE / injection."""
+"""Out-of-band (OOB) interaction scaffolding for blind SSRF, XXE, and injection."""
 
 from __future__ import annotations
 
@@ -69,9 +69,9 @@ class OobSession:
                     self.client = c
                     logger.info("interactsh registered on %s (corr-id %s)", c.server, c.correlation_id)
                 else:
-                    logger.warning("interactsh registration failed — OOB falls back to reflection only")
+                    logger.warning("interactsh registration failed - OOB falls back to reflection only")
             except Exception as e:  # noqa: BLE001
-                logger.warning("interactsh unavailable (%s) — OOB falls back to reflection only", e)
+                logger.warning("interactsh unavailable (%s) - OOB falls back to reflection only", e)
 
     def issue(self, context: dict[str, Any]) -> tuple[str, str]:
         """Mint a callback URL, recording context under its label for later matching.

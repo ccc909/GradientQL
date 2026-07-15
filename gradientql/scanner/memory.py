@@ -1,4 +1,4 @@
-"""Memory — the agent's self-owned situational model."""
+"""Situational state the agent keeps across steps."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def effective_state(e: dict[str, Any]) -> str:
 
 
 def unconfirmed_classes(vulns: list[dict[str, Any]]) -> list[str]:
-    """Return the vuln classes not represented in `vulns` (the coverage gaps)."""
+    """Return the vuln classes not represented in `vulns`."""
     found: set[str] = set()
     for v in vulns:
         t = str(v.get("vuln_type", "")).lower()
@@ -97,8 +97,8 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
                  total_root: int = 0, untouched_sweepable: int = 0, require_args: int = 0) -> str:
     if not ledger and not facts and not searched:
         n = untouched_sweepable or total_root
-        seed = f" ({n} no-arg fields await — `sweep` maps many at once)" if n else ""
-        return f"  (nothing tried yet — START with `sweep` to map the surface{seed})"
+        seed = f" ({n} no-arg fields await - `sweep` maps many at once)" if n else ""
+        return f"  (nothing tried yet - START with `sweep` to map the surface{seed})"
     tally = Counter(effective_state(e) for e in ledger.values())
     auth_gated = sum(1 for e in ledger.values()
                      if e.get("auto") == "AUTH-BLOCKED" and effective_state(e) == "open")
@@ -106,25 +106,25 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
     if untouched_sweepable > 0:
         parts.append(f"{untouched_sweepable} no-arg query fields still un-swept (`sweep`)")
     if require_args > 0:
-        parts.append(f"{require_args} fields/mutations need args — DRILL individually (graphql/fuzz), can't sweep")
+        parts.append(f"{require_args} fields/mutations need args - DRILL individually (graphql/fuzz), can't sweep")
     if not parts:
-        parts.append("no-arg surface fully swept — pivot to required-arg fields, injection, SSRF, DoS")
+        parts.append("no-arg surface fully swept - pivot to required-arg fields, injection, SSRF, DoS")
     cov = (f"  COVERAGE: {tally.get('finding', 0) + tally.get('exploited', 0)} finding/exploited, "
            f"{tally.get('data', 0)} data, {tally.get('open', 0)} open, {tally.get('dead', 0)} dead "
-           f"({len(ledger)} fields tried) — {'; '.join(parts)} | {n_findings} findings recorded")
+           f"({len(ledger)} fields tried) - {'; '.join(parts)} | {n_findings} findings recorded")
     if auth_gated:
         cov += (f"\n  AUTH-GATED: {auth_gated} field(s) need a token. If KNOWN says there's no way to mint "
-                f"one, STOP retrying them — they stay blocked while anonymous; pivot to unauth vectors.")
+                f"one, STOP retrying them - they stay blocked while anonymous; pivot to unauth vectors.")
     sr = "  SEARCHED: " + (", ".join(searched[:30]) if searched else "(nothing yet)")
 
     opens = [e for e in ledger.values() if effective_state(e) == "open"]
     if opens:
         ot = "\n  OPEN THREADS (worth another angle):\n" + "\n".join(
-            f"    • {e.get('field', '?')} @{e.get('identity', '?')} — "
+            f"    • {e.get('field', '?')} @{e.get('identity', '?')} - "
             f"{e.get('why') or e.get('echoed') or e.get('auto') or 'untested angle'}"
             for e in opens[:6])
     else:
-        ot = "\n  OPEN THREADS: (none flagged — mark one with verdict:{state:\"open\"} if you want to revisit it)"
+        ot = "\n  OPEN THREADS: (none flagged - mark one with verdict:{state:\"open\"} if you want to revisit it)"
 
     if facts:
         shown = "\n".join(f"    - {f}" for f in facts[:20])
@@ -132,7 +132,7 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
             shown += f"\n    (+{len(facts) - 20} more banked facts)"
         kn = "\n  KNOWN (facts you've recorded):\n" + shown
     else:
-        kn = "\n  KNOWN: (nothing yet — add \"learned\":\"...\" to ANY action to bank what you discover)"
+        kn = "\n  KNOWN: (nothing yet - add \"learned\":\"...\" to ANY action to bank what you discover)"
 
     def _rank(e: dict) -> int:
         st = effective_state(e)
@@ -155,7 +155,7 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
         lines.append(f"    {_STATE_SYM.get(st, '?')} {e.get('field', '?')}{idl} {e.get('auto', '')} "
                      f"x{e.get('attempts', 0)}{extra}{conf}")
     if len(ledger) > 20:
-        lines.append(f"    (+{len(ledger) - 20} more fields in ledger — lower priority)")
+        lines.append(f"    (+{len(ledger) - 20} more fields in ledger - lower priority)")
     tried = "\n  TRIED (✓data ⚠finding ✗dead ?open):\n" + "\n".join(lines)
     return cov + "\n" + sr + ot + kn + tried
 

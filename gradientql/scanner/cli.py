@@ -118,7 +118,7 @@ def main(settings_path: str | None = None, target_url: str | None = None,
         if _cp.is_enabled(settings) and _cp.checkpoint_path(settings, run_id).is_file():
             logger.warning("Interrupted. Resume this run with:  gradientql --resume %s", run_id)
         elif _cp.is_enabled(settings):
-            logger.warning("Interrupted before the first checkpoint was written — nothing to resume.")
+            logger.warning("Interrupted before the first checkpoint was written - nothing to resume.")
         raise
 
 

@@ -1,4 +1,4 @@
-"""Core action handlers: graphql (the universal primitive), set_identity, report_finding, done."""
+"""Core action handlers: graphql, set_identity, report_finding, done."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def _obs_data(full: str, obs_max: int = _OBS_DATA_CHARS) -> str:
             notable.append(v)
         if len(notable) >= 5:
             break
-    note = f"  …(+{len(full) - obs_max} chars truncated — full body in trace)"
+    note = f"  …(+{len(full) - obs_max} chars truncated - full body in trace)"
     if notable:
         note += "  ⚠ NOTABLE values further in the response: " + ", ".join(v[:80] for v in notable)
     return full[:obs_max] + note
@@ -117,7 +117,7 @@ def _decode_response_tokens(text: str) -> str:
             seen.append(summ)
         if len(seen) >= 2:
             break
-    return ("⚠ TOKEN in response decoded — judge if it's a by-design public client token "
+    return ("⚠ TOKEN in response decoded - judge if it's a by-design public client token "
             "(merchant/clientApiUrl present) or a real secret worth chasing: " + " || ".join(seen)) if seen else ""
 
 
@@ -147,7 +147,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     req_headers = args.get("headers") if isinstance(args.get("headers"), dict) else {}
     if not query:
         ctx.log(f"[{ctx.step}] graphql: empty query, skipped")
-        return Result(observation="empty query — the GraphQL string must go in args.query "
+        return Result(observation="empty query - the GraphQL string must go in args.query "
                       "({\"action\":\"graphql\",\"args\":{\"query\":\"...\"}}); a \"query\" "
                       "placed at the top level, outside \"args\", is dropped.")
 
@@ -178,7 +178,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     if led.get("dup_fails", 0) >= dup_cap and same_request:
         msg = (f"graphql BLOCKED: this EXACT request to '{pf}' returned the identical failure "
                f"{led['dup_fails']}x under {idlabel} ({led.get('sig') or 'no progress'}). Resending it "
-               f"won't help — CHANGE AN ARGUMENT (a different id/value), switch identity, or pivot to a "
+               f"won't help - CHANGE AN ARGUMENT (a different id/value), switch identity, or pivot to a "
                f"different field/vector.")
         ctx.log(f"[{ctx.step}] {msg}")
         return Result(observation=msg, blocked=True)
@@ -186,7 +186,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     oscillating = len(stale_fps) >= cap and len(set(stale_fps)) <= 2
     if (led["attempts"] >= cap and same_request) or oscillating:
         msg = (f"graphql BLOCKED (backstop): '{pf}' tried {led['attempts']}x under {idlabel} "
-               f"without progress — mark it dead/open and move to a new field or identity.")
+               f"without progress - mark it dead/open and move to a new field or identity.")
         ctx.log(f"[{ctx.step}] {msg}")
         return Result(observation=msg, blocked=True)
 
@@ -221,7 +221,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
 
     obs_bits = [f"HTTP {status}"]
     if is_empty:
-        obs_bits.append(f"data=NULL/EMPTY ({pf} returned nothing — null/disabled/auth-gated under {idlabel})")
+        obs_bits.append(f"data=NULL/EMPTY ({pf} returned nothing - null/disabled/auth-gated under {idlabel})")
     elif failmsg:
         obs_bits.append(f"data={data_s}  ⚠ self-reported FAILURE ({failmsg})")
     else:
@@ -229,11 +229,11 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     if err_s:
         obs_bits.append(f"errors={err_s}")
     if is_empty and any(m in err_s.lower() for m in _VALIDATION_ERR_MARKERS):
-        obs_bits.append("⚠ VALIDATION error: the WHOLE query was REJECTED before running — the "
+        obs_bits.append("⚠ VALIDATION error: the WHOLE query was REJECTED before running - the "
                         "fields you wanted were NOT tested. Re-run the one you care about ALONE, "
                         "using { __typename } if unsure of its subfields.")
     if _mutation_batch_count(query) >= 2:
-        obs_bits.append("⚠ BATCHED MUTATION: you ran 2+ state-changing fields in one request — if any "
+        obs_bits.append("⚠ BATCHED MUTATION: you ran 2+ state-changing fields in one request - if any "
                         "errors, the whole result is ENTANGLED and you can't trust the others. For an "
                         "auth-sensitive/destructive mutation, send it ALONE (or use auth_test).")
     if fresh:
@@ -258,7 +258,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
             led["echoed"] = f"echoes input ({refl[0][:24]})"
             obs_bits.append(f"note: your input ({refl[0][:24]!r}) is echoed back. If this field RENDERS/"
                             f"interpolates input (a template/preview/format/message), `fuzz` it for SSTI/cmdi; "
-                            f"if it's just a stored value echoed in a CRUD response, it's a plain echo — your call.")
+                            f"if it's just a stored value echoed in a CRUD response, it's a plain echo - your call.")
     if "eyJ" in full_data_s:
         decoded = _decode_response_tokens(full_data_s)
         if decoded:
@@ -267,7 +267,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     oob_dom = getattr(ctx.oob_sess, "domain", "") if ctx.oob_sess is not None else ""
     if (urlarg and ctx.oob_sess is not None and not led.get("fuzzed")
             and (is_empty or not data) and not (oob_dom and oob_dom in query)):
-        obs_bits.append(f"blind-SSRF: `{pf}` takes a URL arg ('{urlarg}') and returned no data — that does "
+        obs_bits.append(f"blind-SSRF: `{pf}` takes a URL arg ('{urlarg}') and returned no data - that does "
                         f"NOT clear SSRF (a server-side fetch is invisible in the response). To actually test "
                         f"it: `fuzz` field:'{pf}' arg:'{urlarg}' classes:['ssrf'] (auto-injects an OOB callback "
                         f"and the loop auto-confirms a blind hit).")
@@ -291,7 +291,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
         led["stale_fps"] = ((led.get("stale_fps") or []) + [incoming_fp])[-cap:]
     led["last_sig"] = outcome_sig
     if led["dup_fails"] >= 2:
-        obs_bits.append(f"⚠ SAME failure as last time (x{led['dup_fails']}) — this vector looks dead "
+        obs_bits.append(f"⚠ SAME failure as last time (x{led['dup_fails']}) - this vector looks dead "
                         f"for {idlabel}; pivot or change identity rather than resending (next resend is blocked).")
 
     ctx.interactions.append({
@@ -313,7 +313,7 @@ def handle_set_identity(ctx: ActionContext, args: dict) -> Result:
         return Result(observation="set_identity: headers must be an object")
     new = {str(k): str(v) for k, v in hdrs.items()}
     if new and all(ctx.identity.get(k) == v for k, v in new.items()):
-        obs = ("identity UNCHANGED — those headers are already active; stop re-setting. To compare "
+        obs = ("identity UNCHANGED - those headers are already active; stop re-setting. To compare "
                "identities for BOLA, pass the OTHER token via graphql `headers` on a SINGLE call "
                "instead of switching back and forth.")
         ctx.log(f"[{ctx.step}] set_identity -> {obs}")
@@ -343,7 +343,7 @@ def handle_report_finding(ctx: ActionContext, args: dict) -> Result:
     ok = ctx.record(vt, target, str(args.get("evidence", "")), _severity_to_score(args.get("severity")))
     ctx.log(f"[{ctx.step}] report_finding: {vt} on {target}")
     if not ok:
-        return Result(observation=(f"NOT recorded — {vt} on {target or 'endpoint'} duplicates an existing "
+        return Result(observation=(f"NOT recorded - {vt} on {target or 'endpoint'} duplicates an existing "
                                    "finding or was retracted; vary vuln_type/target or leave the retraction."))
     return Result(observation=f"recorded finding: {vt} on {target or 'endpoint'}")
 

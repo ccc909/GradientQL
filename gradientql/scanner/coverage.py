@@ -1,4 +1,4 @@
-"""High-value-target coverage — a schema-driven checklist of under-tested field classes."""
+"""Schema-driven coverage of under-tested high-value field classes."""
 
 from __future__ import annotations
 
