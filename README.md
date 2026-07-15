@@ -3,7 +3,7 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-e8a317.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 
-GradientQL is a vibe powered GraphQL vulnerability scanner driven by a single language model. You 
+GradientQL is a vibe powered GraphQL vulnerability scanner driven by a single language model. You
 give it an endpoint and a model API key, and it runs the whole assessment on its own: it reads the schema,
 registers and logs into an account when it needs one, and probes for access-control flaws,
 injection, server-side request forgery, JWT forgery, request smuggling, CSRF, credential
@@ -183,7 +183,7 @@ with `--url` set, as long as a terminal is attached.
 
 ## Interactive interface
 
-Run `gradientql` with no arguments to open the TUI, it is composed of:
+Run `gradientql` with no arguments to open the TUI, which is composed of:
 
 - A menu that shows the current target, budget, model, proxy, and whether an API key is set, with
   buttons to start a scan or open settings.

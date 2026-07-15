@@ -469,7 +469,7 @@ class DashboardScreen(Screen):
             with VerticalScroll(id="loot_scroll"):
                 yield Static(loot_text(None), id="loot")
         yield DataTable(id="findings")
-        yield Input(placeholder="steer the agent — e.g. 'search for DoS now' — press Enter to send", id="steer")
+        yield Input(placeholder="steer the agent - e.g. 'search for DoS now' - press Enter to send", id="steer")
         yield Footer()
 
     def _set_header(self, status: str, style: str, detail: str) -> None:

@@ -1,4 +1,4 @@
-"""Interactsh (ProjectDiscovery) OOB client — register + poll public servers, no self-host."""
+"""Interactsh (ProjectDiscovery) OOB client - register + poll public servers, no self-host."""
 
 from __future__ import annotations
 

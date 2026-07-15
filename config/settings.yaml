@@ -31,7 +31,7 @@ llm:
   # Cap on model output per step. This is a CEILING, not a target: you pay for tokens actually
   # generated, so a high value costs nothing on normal steps and just gives reasoning models room
   # to finish. Set it near the model's max output. If a response is still truncated at this limit,
-  # the run aborts (keeping findings) instead of retrying the identical call — raise it if so.
+  # the run aborts (keeping findings) instead of retrying the identical call - raise it if so.
   attacker_max_tokens: 64000
   timeout: 120
   max_retries: 2

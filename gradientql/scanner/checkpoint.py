@@ -1,4 +1,4 @@
-"""Run checkpointing — serialize the recoverable slice of a run so it can be resumed.
+"""Run checkpointing - serialize the recoverable slice of a run so it can be resumed.
 
 A checkpoint is a JSON snapshot of the agent's working state (findings, per-field ledger,
 harvested secrets, identity, run-log, token tally) plus the parsed schema and the step index,

@@ -1,4 +1,4 @@
-"""Harvesting — the agent's memory of values that flow through requests/responses."""
+"""Extracts and stores values seen in requests and responses."""
 
 from __future__ import annotations
 

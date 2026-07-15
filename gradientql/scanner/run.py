@@ -1,4 +1,4 @@
-"""Run orchestration — the agent-only pipeline."""
+"""Agent-only run orchestration."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
         if resume.get("complete"):
             _start = int(resume.get("step", -1)) + 1
             if _start >= budget:
-                logger.warning("Checkpoint %s already used its full budget of %d steps — raise scanner.budget "
+                logger.warning("Checkpoint %s already used its full budget of %d steps - raise scanner.budget "
                                "to explore further; returning the saved findings unchanged.", run_id, budget)
             else:
                 logger.warning("Checkpoint %s ended naturally (done/budget); resuming re-scans the remaining "
@@ -157,7 +157,7 @@ def _reconcile_oob(settings: dict[str, Any], result: dict[str, Any]) -> None:
 def _print_report(result: dict[str, Any]) -> None:
     vulns = result.get("vulnerabilities", [])
     line = "=" * 66
-    print(f"\n{line}\n  GradientQL — AGENT MODE Report\n{line}")
+    print(f"\n{line}\n  GradientQL - AGENT MODE Report\n{line}")
     print(f"\nTarget:   {result.get('target_url')}")
     print(f"Steps:    {result.get('steps')}")
     print(f"Requests: {len(result.get('interactions', []))}")
