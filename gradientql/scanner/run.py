@@ -1,4 +1,4 @@
-"""Run orchestration — the agent-only pipeline."""
+"""Agent-only run orchestration."""
 
 from __future__ import annotations
 
@@ -23,14 +23,22 @@ logger = logging.getLogger("gradientql.scanner")
 
 
 def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
-             report: bool = True, should_stop: Any = None, steer: Any = None) -> dict[str, Any]:
+             report: bool = True, should_stop: Any = None, steer: Any = None,
+             run_id: str | None = None, resume: dict[str, Any] | None = None) -> dict[str, Any]:
     """Introspect the target, run the agent loop, and return deduplicated findings.
 
     Resets the shared LLM caches, circuit breaker, and OOB session as a side
     effect. Prints a plain report unless `report` is False (the TUI renders its
-    own). `progress_cb(step, budget, ctx)` is invoked once per loop step. Returns
+    own). `progress_cb(step, budget, ctx)` is invoked once per loop step. Every
+    run gets a unique `run_id`; pass a loaded checkpoint as `resume` to continue
+    it (introspection is skipped and the saved schema/state are reused). Returns
     the loop result dict; if introspection fails, returns an empty result.
     """
+    from . import checkpoint as _cp
+    if resume is not None:
+        run_id = resume.get("run_id") or run_id or _cp.new_run_id()
+    elif run_id is None:
+        run_id = _cp.new_run_id()
     configure_cache(settings)
     configure_circuit(settings)
     clear_llm_cache()
@@ -39,24 +47,40 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
     from ..utils.oob import reset_session as _reset_oob
     _reset_oob()
     init_vuln_stream(target_url)
+    if resume is not None:  # re-emit prior findings so the stream feed isn't truncated to post-resume only
+        for v in (resume.get("ctx") or {}).get("vulns", []) or []:
+            try:
+                append_vuln_stream(v)
+            except Exception:  # noqa: BLE001
+                pass
 
     from ..utils.graphql_client import clear_client_cache, get_client
     clear_client_cache()
     csrf = settings.get("target", {}).get("csrf")
     client = get_client(target_url, csrf_config=csrf, http=settings.get("http", {}))
-    logger.info("AGENT MODE: introspecting %s", target_url)
-    raw = client.introspect()
-    if raw.get("errors") and not raw.get("data"):
-        logger.error("Agent mode requires introspection, which failed: %s", raw.get("errors"))
-        errs = raw.get("errors")
-        detail = ""
-        if isinstance(errs, list) and errs and isinstance(errs[0], dict):
-            detail = str(errs[0].get("message", ""))[:160]
-        return {"vulnerabilities": [], "interactions": [], "steps": 0, "target_url": target_url,
-                "error": f"introspection failed: {detail or errs}"}
-    schema_map = parse_schema(raw)
-    logger.info("AGENT MODE: schema parsed (%d types). Handing control to the model.",
-                len([k for k in schema_map if not k.startswith("_")]))
+    if resume is not None:
+        schema_map = resume.get("schema_map") or {}
+        try:  # introspection normally primes the session (CSRF token/cookies); warm it up on resume
+            client.execute("{__typename}")
+        except Exception:  # noqa: BLE001
+            pass
+        logger.info("AGENT MODE: resuming run %s from step %d (skipping introspection, %d types cached)",
+                    run_id, int(resume.get("step", -1)) + 1,
+                    len([k for k in schema_map if not k.startswith("_")]))
+    else:
+        logger.info("AGENT MODE: introspecting %s", target_url)
+        raw = client.introspect()
+        if raw.get("errors") and not raw.get("data"):
+            logger.error("Agent mode requires introspection, which failed: %s", raw.get("errors"))
+            errs = raw.get("errors")
+            detail = ""
+            if isinstance(errs, list) and errs and isinstance(errs[0], dict):
+                detail = str(errs[0].get("message", ""))[:160]
+            return {"vulnerabilities": [], "interactions": [], "steps": 0, "target_url": target_url,
+                    "run_id": run_id, "error": f"introspection failed: {detail or errs}"}
+        schema_map = parse_schema(raw)
+        logger.info("AGENT MODE: schema parsed (%d types). Handing control to the model.",
+                    len([k for k in schema_map if not k.startswith("_")]))
 
     vulns: list[dict[str, Any]] = []
     try:
@@ -75,11 +99,23 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
         logger.debug("misconfig sweep skipped: %s", e)
 
     budget = int(settings.get("scanner", {}).get("budget", 60))
+    if resume is not None:  # never resume into an already-finished step space; allow extending
+        budget = max(budget, int(resume.get("budget", 0)))
+        if resume.get("complete"):
+            _start = int(resume.get("step", -1)) + 1
+            if _start >= budget:
+                logger.warning("Checkpoint %s already used its full budget of %d steps - raise scanner.budget "
+                               "to explore further; returning the saved findings unchanged.", run_id, budget)
+            else:
+                logger.warning("Checkpoint %s ended naturally (done/budget); resuming re-scans the remaining "
+                               "%d step(s).", run_id, budget - _start)
     trace = settings.get("scanner", {}).get("trace")
     verbose = bool(settings.get("scanner", {}).get("verbose"))
     result = loop.run(settings, schema_map, target_url, budget, trace=trace, verbose=verbose,
-                      progress_cb=progress_cb, should_stop=should_stop, steer=steer)
+                      progress_cb=progress_cb, should_stop=should_stop, steer=steer,
+                      run_id=run_id, resume=resume)
     result["vulnerabilities"] = dedup_findings(vulns + result.get("vulnerabilities", []))
+    result.setdefault("run_id", run_id)
 
     _reconcile_oob(settings, result)
     result["vulnerabilities"] = dedup_findings(result["vulnerabilities"])
@@ -121,7 +157,7 @@ def _reconcile_oob(settings: dict[str, Any], result: dict[str, Any]) -> None:
 def _print_report(result: dict[str, Any]) -> None:
     vulns = result.get("vulnerabilities", [])
     line = "=" * 66
-    print(f"\n{line}\n  GradientQL — AGENT MODE Report\n{line}")
+    print(f"\n{line}\n  GradientQL - AGENT MODE Report\n{line}")
     print(f"\nTarget:   {result.get('target_url')}")
     print(f"Steps:    {result.get('steps')}")
     print(f"Requests: {len(result.get('interactions', []))}")

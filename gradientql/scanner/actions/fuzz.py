@@ -1,4 +1,4 @@
-"""The `fuzz` action — fire a battery of payloads at ONE field argument in a single turn."""
+"""The `fuzz` action: send a battery of payloads at one field argument in a single turn."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
     nested = bool(path)
     if nested:
         if base_input is None:
-            msg = (f"fuzz nested: also pass input:{{...}} — the full base object for `{arg}` "
+            msg = (f"fuzz nested: also pass input:{{...}} - the full base object for `{arg}` "
                    f"with valid fillers, so only `{path}` carries the payload and the rest validates.")
             ctx.log(f"[{ctx.step}] {msg}")
             return Result(observation=msg)
@@ -118,7 +118,7 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
             return Result(observation=msg)
         b = _base_scalar(atype)
         if b in _NON_INJECTABLE_SCALARS or b in (sm.get("_enum_types") or {}):
-            msg = (f"fuzz: `{arg}` is {atype} (not string-injectable) — pick a String/ID arg, "
+            msg = (f"fuzz: `{arg}` is {atype} (not string-injectable) - pick a String/ID arg, "
                    f"or fuzz a nested leaf with path:'<leaf>' + input:{{...}}")
             ctx.log(f"[{ctx.step}] {msg}")
             return Result(observation=msg)
@@ -147,7 +147,7 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
 
     known = list(dict.fromkeys(c for c in requested if CLASS_PROBES.get(c)))
     if not custom and known and not buckets:
-        msg = (f"fuzz {label}: already fuzzed {', '.join(known)} here — whole ladder sent, no new "
+        msg = (f"fuzz {label}: already fuzzed {', '.join(known)} here - whole ladder sent, no new "
                f"signal last time. Use DIFFERENT classes/payloads, or mark it dead and move on.")
         ctx.log(f"[{ctx.step}] {msg}")
         return Result(observation=msg)
@@ -176,7 +176,7 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
         except Exception:  # noqa: BLE001
             pass
     if not payloads:
-        msg = "fuzz: no payloads (unknown classes?) — pass payloads:[...] or classes:[ssti,...]"
+        msg = "fuzz: no payloads (unknown classes?) - pass payloads:[...] or classes:[ssti,...]"
         ctx.log(f"[{ctx.step}] {msg}")
         return Result(observation=msg)
 
@@ -247,16 +247,16 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
         head = "⚠ CONFIRMED: " + "; ".join(f"{vt} via {payload!r}" for vt, payload, _ in confirmed[:3])
         head += "\n  all payloads: " + " | ".join(_line(r) for r in results)
     elif results and all(r["tags"] == ["reflected"] for r in results):
-        head = ("LITERAL REFLECTOR — every payload was echoed back verbatim with NO eval/error/diff. "
+        head = ("LITERAL REFLECTOR - every payload was echoed back verbatim with NO eval/error/diff. "
                 "This is a plain echo, NOT an injection vector. Mark it dead; do not re-fuzz.")
     else:
         signal = [r for r in results if r["tags"]]
         if signal:
-            head = "leads (read these — judge if any is a real vuln):\n  " + "\n  ".join(_line(r) for r in signal)
+            head = "leads (read these - judge if any is a real vuln):\n  " + "\n  ".join(_line(r) for r in signal)
         else:
-            head = ("no auto-signal across payloads — per-payload outcomes:\n  "
+            head = ("no auto-signal across payloads - per-payload outcomes:\n  "
                     + "\n  ".join(_line(r) for r in results))
-    ssrf_note = ("  [ssrf: OOB URL injected — run `oob_url op:check` in a few steps to confirm blind SSRF]"
+    ssrf_note = ("  [ssrf: OOB URL injected - run `oob_url op:check` in a few steps to confirm blind SSRF]"
                  if has_ssrf else "")
     fully_dropped: list[str] = []
     partial: list[tuple[str, int, int]] = []
@@ -272,8 +272,8 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
         notes.append(f"NOT sent: {', '.join(fully_dropped)}; re-fuzz with "
                      f"classes:[{','.join(fully_dropped)}] to cover them")
     for cls, done, total in partial:
-        notes.append(f"{cls}: sent {done}/{total} — re-fuzz {label} classes:[{cls}] to send the rest")
-    trunc_note = f"  [cap {cap} reached — " + "; ".join(notes) + "]" if notes else ""
+        notes.append(f"{cls}: sent {done}/{total} - re-fuzz {label} classes:[{cls}] to send the rest")
+    trunc_note = f"  [cap {cap} reached - " + "; ".join(notes) + "]" if notes else ""
     obs = f"fuzz {label} ×{len(payloads)} -> {head}{ssrf_note}{trunc_note}"
     ctx.interactions.append({"target_node": f"fuzz:{label}", "reason": "agent_fuzz",
                              "response_status": 0, "score": 0.0,
@@ -291,7 +291,7 @@ def _coercion_fuzz(ctx: ActionContext, sm: dict, root: str, field: str, arg: str
     """
     battery_key = (field, arg, "", "coercion-battery")
     if battery_key in ctx._fuzz_seen:
-        msg = (f"coercion {field}({arg}): already coerced here — the type-coercion/enum battery is "
+        msg = (f"coercion {field}({arg}): already coerced here - the type-coercion/enum battery is "
                f"deterministic and was fully run, no new signal. Try injection classes "
                f"(ssti/cmdi/sqli), a different arg, or mark it dead.")
         ctx.log(f"[{ctx.step}] {msg}")
@@ -350,7 +350,7 @@ def _coercion_fuzz(ctx: ActionContext, sm: dict, root: str, field: str, arg: str
         head = "type-confusion outcomes (judge if any error leaks internals / a wrong type was accepted):"
     obs = f"coercion {label} ×{len(results)} -> {head}\n  " + "\n  ".join(_line(r) for r in results)
     if dropped:
-        obs += (f"\n  [NOT run this turn: {', '.join(dropped)} — re-fuzz {label} with those classes "
+        obs += (f"\n  [NOT run this turn: {', '.join(dropped)} - re-fuzz {label} with those classes "
                 f"(no coercion/enum) to send that injection battery]")
     ctx.interactions.append({"target_node": f"coerce:{label}", "reason": "agent_fuzz_coercion",
                              "response_status": 0, "score": 0.0,

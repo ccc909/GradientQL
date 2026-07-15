@@ -1,4 +1,4 @@
-"""ActionContext + Result — the contract between the control loop and the action handlers."""
+"""ActionContext and Result: the state and return types shared with action handlers."""
 
 from __future__ import annotations
 

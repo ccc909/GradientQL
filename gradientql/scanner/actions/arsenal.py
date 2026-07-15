@@ -24,7 +24,7 @@ def handle_visit(ctx: ActionContext, args: dict) -> Result:
     """
     url = str(args.get("url", "")).strip()
     if not url.lower().startswith(("http://", "https://")):
-        return Result(observation="visit needs {url} (http/https) — open an account-activation / magic-login / "
+        return Result(observation="visit needs {url} (http/https) - open an account-activation / magic-login / "
                       "password-reset LINK (e.g. from temp_mail's LINKS=). It GETs the link in your session, "
                       "follows redirects, harvests any token, and tells you if the account looks activated.")
     import requests
@@ -40,11 +40,11 @@ def handle_visit(ctx: ActionContext, args: dict) -> Result:
     activated = status < 400 and any(m in (body + " " + final).lower() for m in _ACTIVATED_MARKERS)
     bits = [f"HTTP {status}", f"final={final[:120]}"]
     if activated:
-        bits.append("⚠ looks ACTIVATED/confirmed — try logging in or re-running the authed queries now")
+        bits.append("⚠ looks ACTIVATED/confirmed - try logging in or re-running the authed queries now")
     m = _LINK_TOKEN_RE.search(final + " " + body)
     if m:
         ctx.harvested.setdefault("token", []).append(m.group(1))
-        bits.append(f"HARVESTED token from link ({m.group(1)[:14]}…) — adopt via set_identity if it's a session token")
+        bits.append(f"HARVESTED token from link ({m.group(1)[:14]}…) - adopt via set_identity if it's a session token")
     cookies = list(getattr(getattr(sess, "cookies", None), "keys", lambda: [])())
     if cookies:
         bits.append("session cookies now: " + ", ".join(cookies[:6]))
@@ -90,13 +90,13 @@ def handle_oob_url(ctx: ActionContext, args: dict) -> Result:
                 ctx.record(f"Blind SSRF / OOB interaction ({proto}) confirmed", "endpoint",
                            f"OOB {proto} callback from {ix.get('remote-address', '?')}", 3.0)
             protos = ", ".join(sorted({h.get("interaction", {}).get("protocol", "?") for h in hits}))
-            obs = f"⚠ {len(hits)} OOB CALLBACK(S) RECEIVED — blind SSRF/XXE CONFIRMED (protocols: {protos})"
+            obs = f"⚠ {len(hits)} OOB CALLBACK(S) RECEIVED - blind SSRF/XXE CONFIRMED (protocols: {protos})"
         else:
-            obs = ("no OOB callbacks yet — inject the URL into a url/webhook/fetch field, then "
+            obs = ("no OOB callbacks yet - inject the URL into a url/webhook/fetch field, then "
                    "'oob_url op:check' again a few steps later (callbacks can lag)")
     else:
         url, _label = ctx.oob_sess.issue({"approach": "agent", "node": str(args.get("note", "agent"))})
-        obs = (f"OOB callback URL — inject into a url/webhook/redirect/fetch arg, THEN run oob_url "
+        obs = (f"OOB callback URL - inject into a url/webhook/redirect/fetch arg, THEN run oob_url "
                f"with op:\"check\" later to confirm a blind SSRF/XXE hit: {url}")
     ctx.log(f"[{ctx.step}] oob_url -> {obs}")
     return Result(observation=obs)
@@ -109,13 +109,13 @@ def handle_temp_mail(ctx: ActionContext, args: dict) -> Result:
         from ...utils.tempmail import TempMailClient
         ctx.tempmail = TempMailClient()
         addr = ctx.tempmail.create()
-        obs = (f"inbox ready: {addr} — REGISTER with this EXACT email, then call temp_mail "
+        obs = (f"inbox ready: {addr} - REGISTER with this EXACT email, then call temp_mail "
                f"again to read the confirmation key" if addr
-               else "temp_mail unavailable (mail.tm unreachable) — confirmation flow not possible")
+               else "temp_mail unavailable (mail.tm unreachable) - confirmation flow not possible")
     else:
         msgs = ctx.tempmail.poll()
         if not msgs:
-            obs = (f"inbox {ctx.tempmail.address}: no new mail yet — register with this address "
+            obs = (f"inbox {ctx.tempmail.address}: no new mail yet - register with this address "
                    f"first, or wait a few seconds and call temp_mail again")
         else:
             lines = []
@@ -126,7 +126,7 @@ def handle_temp_mail(ctx: ActionContext, args: dict) -> Result:
                 if m["links"]:
                     bits.append("LINKS=" + " ".join(m["links"][:2]))
                 lines.append(" | ".join(bits))
-            obs = (f"inbox {ctx.tempmail.address} ({len(msgs)} new) — confirm with a KEY via "
+            obs = (f"inbox {ctx.tempmail.address} ({len(msgs)} new) - confirm with a KEY via "
                    f"confirmEmail(input:{{confirmation_key, email}}), OR `visit` an activation LINK:\n   "
                    + "\n   ".join(lines))
     ctx.log(f"[{ctx.step}] temp_mail -> {obs}")
@@ -163,7 +163,7 @@ def handle_dos(ctx: ActionContext, args: dict) -> Result:
         else:
             obs = f"{vt} already recorded (same DoS class, no new finding): {reason[:120]}"
     else:
-        obs = f"overload rejected/limited (HTTP {resp.get('_status_code', 0)}) — DoS protection present"
+        obs = f"overload rejected/limited (HTTP {resp.get('_status_code', 0)}) - DoS protection present"
     ctx.log(f"[{ctx.step}] dos {args.get('type', 'aliases')} -> {obs}")
     return Result(observation=obs, touched_target=True, is_dead=dead)
 

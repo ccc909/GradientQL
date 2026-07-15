@@ -50,7 +50,7 @@ def run_misconfig_sweep(
         if hit and r.status_code == 200:
             add(
                 "GraphQL IDE Exposed (information_disclosure)",
-                f"GET {target_url} serves an interactive GraphQL IDE (matched '{hit}') — "
+                f"GET {target_url} serves an interactive GraphQL IDE (matched '{hit}') - "
                 f"self-documenting attack console in production.",
                 "medium",
             )
@@ -76,7 +76,7 @@ def run_misconfig_sweep(
         if isinstance(ext, dict) and any(k in ext for k in ("tracing", "metrics", "apolloTracing")):
             add(
                 "Apollo Tracing / Verbose Extensions (information_disclosure)",
-                "Responses include performance tracing in `extensions` — leaks resolver "
+                "Responses include performance tracing in `extensions` - leaks resolver "
                 "timing and internal structure; disable tracing in production.",
                 "low",
             )
@@ -109,7 +109,7 @@ def run_misconfig_sweep(
         if "persistedquerynotfound" in (r.text or "").lower():
             add(
                 "Automatic Persisted Queries Enabled (apq)",
-                "The endpoint supports Apollo APQ (responded PersistedQueryNotFound to a fake hash) — "
+                "The endpoint supports Apollo APQ (responded PersistedQueryNotFound to a fake hash) - "
                 "an attacker can register/cache queries by hash (cache poisoning, Apollo fingerprint, "
                 "and a bypass of allow-listed persisted-query controls).",
                 "low",

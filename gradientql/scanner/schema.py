@@ -1,4 +1,4 @@
-"""Schema — introspection parsing, schema search, the attack-surface overview, and `sweep`."""
+"""Introspection parsing, schema search, attack-surface overview, and `sweep`."""
 
 from __future__ import annotations
 
@@ -171,7 +171,7 @@ def build_schema_index(schema_map: dict[str, Any], model_name: str | None = None
         logger.info("AGENT: semantic schema index ready")
         return store
     except Exception as e:  # noqa: BLE001
-        logger.info("AGENT: semantic index unavailable (%s) — using lexical schema search", e)
+        logger.info("AGENT: semantic index unavailable (%s) - using lexical schema search", e)
         return None
 
 
@@ -224,7 +224,7 @@ def _cap_hits(fields: list[str], typed: list[str], sem: list[str], total: int, l
     room -= len(field_keep)
     items = field_keep + typed_keep + sem[:room]
     if need_more:
-        items.append(f"(+{total - len(items)} more — refine keyword)")
+        items.append(f"(+{total - len(items)} more - refine keyword)")
     return items
 
 
@@ -311,7 +311,7 @@ def render_schema_overview(schema_map: dict[str, Any], sig_cap: int = 24, other_
         items = buckets[label]
         if not items:
             continue
-        extra = f"  (+{len(items) - sig_cap} more — search to see)" if len(items) > sig_cap else ""
+        extra = f"  (+{len(items) - sig_cap} more - search to see)" if len(items) > sig_cap else ""
         out.append(f"  {label}:\n    " + "\n    ".join(items[:sig_cap]) + extra)
     for tag, kind in (("Q", "other queries"), ("M", "other mutations")):
         names = other[tag]
@@ -499,7 +499,7 @@ def tool_sweep(client: Any, schema_map: dict[str, Any], exclude: set[str], limit
     """
     fields = [(f, i) for f, i in _sweepable_query_fields(schema_map) if f not in exclude][:limit]
     if not fields:
-        return None, ("SWEEP EXHAUSTED — every no-arg query field has been swept. STOP sweeping; it will "
+        return None, ("SWEEP EXHAUSTED - every no-arg query field has been swept. STOP sweeping; it will "
                       "keep returning this. Drill required-arg fields & mutations individually with "
                       "graphql/fuzz, and pivot to injection/SSRF/DoS/auth."), [], {}
     full_query, _ = _sweep_query(schema_map, fields)
@@ -526,7 +526,7 @@ def render_type_shape(schema_map: dict[str, Any], name: str) -> str | None:
     if isinstance(obj, dict):
         names = [f for f in obj if not f.startswith("_")]
         sig = ", ".join(_fmt_field(schema_map, name, f) for f in names[:30])
-        more = f"  (+{len(names) - 30} more — search_schema)" if len(names) > 30 else ""
+        more = f"  (+{len(names) - 30} more - search_schema)" if len(names) > 30 else ""
         return f"type {name} {{ {sig} }}{more}"
     return None
 
@@ -547,9 +547,9 @@ def introspection_shortcut(query: str, schema_map: dict[str, Any]) -> str | None
     if names:
         lines = [render_type_shape(schema_map, n) or f"{n}: not a known composite type (scalar/enum/typo?)"
                  for n in dict.fromkeys(names)]
-        return ("served from the already-introspected schema (NO request sent — __type queries return the "
+        return ("served from the already-introspected schema (NO request sent - __type queries return the "
                 "whole schema dump on many servers, so use this):\n  " + "\n  ".join(lines))
-    return ("you ALREADY hold the full introspected schema — do NOT re-introspect with __schema/__type "
+    return ("you ALREADY hold the full introspected schema - do NOT re-introspect with __schema/__type "
             "(it returns the entire multi-thousand-field schema and tells you nothing new). Use "
             "`search_schema <keyword>` to find fields/types/inputs, or query a concrete field.")
 

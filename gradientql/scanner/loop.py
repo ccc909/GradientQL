@@ -1,4 +1,4 @@
-"""The control loop — the step skeleton, nothing domain-specific."""
+"""The agent control loop."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _decision_target(name: str, args: dict) -> str:
 def _decision_summary(name: str, args: dict, ctx: ActionContext, res: Result) -> str:
     obs = " ".join((res.observation or "").split())
     if res.blocked:
-        return ("BLOCKED — " + obs)[:160]
+        return ("BLOCKED - " + obs)[:160]
     if name == "graphql" and res.touched_target:
         pf = primary_root_field(str(args.get("query", ""))) or "?"
         e = ctx.ledger.get(pf, {})
@@ -124,7 +124,8 @@ def _accumulate_tokens(acc: dict[str, Any], msg: Any) -> None:
 
 def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, budget: int,
         trace: Any = None, verbose: bool = False, progress_cb: Any = None,
-        should_stop: Any = None, steer: Any = None) -> dict[str, Any]:
+        should_stop: Any = None, steer: Any = None, run_id: str | None = None,
+        resume: dict[str, Any] | None = None) -> dict[str, Any]:
     """Drive the attacker LLM's decision loop for up to `budget` steps.
 
     Streams findings to the reporter as they are confirmed and, when `trace` is
@@ -143,7 +144,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         schema_index = build_schema_index(schema_map, settings.get("embeddings", {}).get("model"))
     else:
         schema_index = None
-        logger.info("AGENT: schema small (<%d fields) — lexical schema search only", min_fields)
+        logger.info("AGENT: schema small (<%d fields) - lexical schema search only", min_fields)
     schema_overview = render_schema_overview(schema_map)
 
     ctx = ActionContext(
@@ -153,21 +154,28 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         _stream=append_vuln_stream, _stream_retract=append_vuln_retraction,
     )
 
-    _am = auth_mutations(schema_map)
-    if _am:
-        ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])
-                         + ") — the signup/login auth chain is viable here.")
+    start_step = 0
+    if resume is not None:
+        from .checkpoint import restore_ctx
+        start_step = restore_ctx(ctx, resume)
+        logger.info("AGENT: resumed run %s at step %d with %d prior finding(s)",
+                    run_id or "?", start_step, len(ctx.vulns))
     else:
-        ctx.facts.append("NO anonymous token-minting mutation in this schema (no login/register/token "
-                         "mutation) — auth is OUT-OF-BAND (REST/OIDC). Do NOT hunt a GraphQL login; focus "
-                         "on unauth data exposure, injection, SSRF, DoS.")
-    _sub = schema_map.get("_subscription_type")
-    if _sub:
-        _subf = [f for f in (schema_map.get(_sub) or {}) if not str(f).startswith("_")]
-        ctx.facts.append(f"A SUBSCRIPTION root ({_sub}: {', '.join(_subf[:6]) or '?'}) exists — a real "
-                         "attack surface (auth-over-subscription, connection DoS) but it needs a WebSocket/"
-                         "SSE transport this tool can't drive over HTTP. NOTE it as untested; don't burn "
-                         "steps trying to query it over POST.")
+        _am = auth_mutations(schema_map)
+        if _am:
+            ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])
+                             + ") - the signup/login auth chain is viable here.")
+        else:
+            ctx.facts.append("NO anonymous token-minting mutation in this schema (no login/register/token "
+                             "mutation) - auth is OUT-OF-BAND (REST/OIDC). Do NOT hunt a GraphQL login; focus "
+                             "on unauth data exposure, injection, SSRF, DoS.")
+        _sub = schema_map.get("_subscription_type")
+        if _sub:
+            _subf = [f for f in (schema_map.get(_sub) or {}) if not str(f).startswith("_")]
+            ctx.facts.append(f"A SUBSCRIPTION root ({_sub}: {', '.join(_subf[:6]) or '?'}) exists - a real "
+                             "attack surface (auth-over-subscription, connection DoS) but it needs a WebSocket/"
+                             "SSE transport this tool can't drive over HTTP. NOTE it as untested; don't burn "
+                             "steps trying to query it over POST.")
 
     nudge_every = settings.get("scanner", {}).get("tuning", {}).get(
         "coverage_nudge_every", _COVERAGE_NUDGE_EVERY)
@@ -213,10 +221,36 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             tracer.step(pending)
         pending = None
 
-    step = 0
-    for step in range(budget):
+    from . import checkpoint as _cp
+    cp_on = run_id is not None and _cp.is_enabled(settings)
+    cp_every = _cp.interval(settings)
+    cp_path = _cp.checkpoint_path(settings, run_id) if cp_on else None
+
+    def _save_cp(s: int, complete: bool = False) -> None:
+        if not cp_on or s < 0:
+            return
+        try:
+            _cp.save(cp_path, run_id=run_id, ctx=ctx, schema_map=schema_map,
+                     target_url=target_url, step=s, budget=budget, complete=complete)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("AGENT: checkpoint save failed at step %d: %s", s, e)
+
+    if resume is not None:
+        # techniques_used is loop-local, not in ctx; rebuild it from the decision log so a resumed
+        # run doesn't treat already-used endpoint tools (dos/smuggle/csrf) as unused - which would
+        # re-fire them and re-defer a legitimate `done`. Decision lines are "[step] name target ...".
+        for _line in ctx.decisions:
+            _rest = _line.split("]", 1)[1].strip() if "]" in _line else ""
+            _nm = _rest.split(" ", 1)[0] if _rest else ""
+            if _nm in _ARSENAL_TOOLS:
+                techniques_used.add(_nm)
+
+    run_complete = False
+    step = start_step - 1
+    last_completed = start_step - 1
+    for step in range(start_step, budget):
         if should_stop is not None and should_stop():
-            logger.info("AGENT: stop requested — ending scan at step %d", step)
+            logger.info("AGENT: stop requested - ending scan at step %d", step)
             break
         _finalize_trace()
         ctx.step = step
@@ -248,19 +282,19 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         recent_t = [t for t in recent_targets[-8:] if t]
         if degraded:
             nudge.append(
-                f"TARGET DEGRADED: the last {consecutive_dead} requests errored/timed out — likely "
+                f"TARGET DEGRADED: the last {consecutive_dead} requests errored/timed out - likely "
                 f"rate-limiting or load from your probes (especially DoS). Send ONE light query like "
-                f"{{__typename}} to check recovery. DO NOT stop — you still have {budget - step} steps.")
+                f"{{__typename}} to check recovery. DO NOT stop - you still have {budget - step} steps.")
         elif len(recent_t) >= 6 and len(set(recent_t)) <= 2:
-            nudge.append("You've hammered the same 1-2 fields with little new signal — the MAP shows what's "
+            nudge.append("You've hammered the same 1-2 fields with little new signal - the MAP shows what's "
                          "already dead. Pivot to a NEW field/vector, or record a verdict/learned and move on.")
         echoed = [f for f, e in ctx.ledger.items()
                   if e.get("echoed") and not e.get("fuzzed") and e.get("verdict") not in ("dead", "exploited")]
         if echoed and not degraded:
-            nudge.append(f"(optional) fields that echoed your input — `fuzz` ONLY if the field looks like it "
+            nudge.append(f"(optional) fields that echoed your input - `fuzz` ONLY if the field looks like it "
                          f"renders/interpolates input, otherwise ignore: {', '.join(echoed[:5])}")
         if noprobe_streak >= 2 and not degraded:
-            nudge.append(f"You've taken {noprobe_streak} recon/no-probe actions in a row — search & notes "
+            nudge.append(f"You've taken {noprobe_streak} recon/no-probe actions in a row - search & notes "
                          f"DON'T make progress. SEND A REQUEST now (graphql/fuzz/sweep) to actually test something.")
         if step % nudge_every == 0 and not degraded:
             uhv = untested_high_value_fields(schema_map, ctx.ledger)
@@ -295,17 +329,33 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             recent_actions.append("llm_error")
             if get_circuit_breaker_status().get("is_open"):
                 circuit_waits += 1
-                logger.warning("AGENT LLM provider circuit open at step %d (%d/%d) — waiting for recovery",
+                logger.warning("AGENT LLM provider circuit open at step %d (%d/%d) - waiting for recovery",
                                step, circuit_waits, _MAX_CIRCUIT_WAITS)
-                ctx.log(f"[{step}] LLM provider circuit open — waiting ~{_CIRCUIT_TIMEOUT}s for recovery")
+                ctx.log(f"[{step}] LLM provider circuit open - waiting ~{_CIRCUIT_TIMEOUT}s for recovery")
                 if circuit_waits >= _MAX_CIRCUIT_WAITS:
                     logger.warning("AGENT aborting: LLM provider still down after %d circuit waits", circuit_waits)
                     break
                 time.sleep(_CIRCUIT_TIMEOUT)
                 continue
-            consec_llm_error += 1
             detail = llm_error or "provider returned no response"
-            is_rate_limit = "429" in detail.lower() or "rate limit" in detail.lower()
+            low = detail.lower()
+            is_rate_limit = "429" in low or "rate limit" in low
+            is_length = ("length limit" in low or "completionusage" in low
+                         or "finish_reason=length" in low or "'length'" in low)
+
+            if is_length:
+                # Deterministic truncation: the model burned its whole output budget (a reasoning
+                # model overshooting) without emitting a parseable action. Retrying the identical
+                # request just spends another full-length generation, so stop now and keep the
+                # findings so far rather than grinding _LLM_ERROR_ABORT identical multi-minute
+                # calls. The fix for a recurring case is a higher llm.attacker_max_tokens.
+                cap = settings.get("llm", {}).get("attacker_max_tokens", 16384)
+                logger.warning("AGENT aborting at step %d: response truncated at the %s-token output limit "
+                               " - raise llm.attacker_max_tokens to give the model more room", step, cap)
+                ctx.log(f"[{step}] response truncated at the token limit - aborting (raise attacker_max_tokens)")
+                break
+
+            consec_llm_error += 1
             logger.warning("AGENT LLM call failed at step %d (%d/%d): %s",
                            step, consec_llm_error, _LLM_ERROR_ABORT, detail)
             ctx.log(f"[{step}] LLM call failed: {detail}")
@@ -329,7 +379,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         if act is None:
             consec_noaction += 1
             snippet = " ".join(str(content).split())[:160]
-            ctx.log(f"[{step}] (no valid action parsed — reply with ONE JSON object; escape newlines "
+            ctx.log(f"[{step}] (no valid action parsed - reply with ONE JSON object; escape newlines "
                     f"inside string args as \\n: {snippet or 'empty'})")
             recent_actions.append("noop")
             if consec_noaction >= _NOACTION_ABORT:
@@ -358,48 +408,49 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             ctx.log(f"[{step}] (self-report) {reported}")
         if pending is not None:
             pending["self_report"] = reported
-        logger.info("AGENT[%d/%d] %s — %s", step + 1, budget, name,
+        logger.info("AGENT[%d/%d] %s - %s", step + 1, budget, name,
                     str(act.get("thought", "")) if narrate else thought)
 
         if name == "done":
             if consecutive_dead >= _DEGRADED_AT and backoffs < _MAX_BACKOFFS:
                 recent_actions[-1] = "backoff"
-                ctx.log(f"[{step}] done IGNORED — target unresponsive; backing off, "
+                ctx.log(f"[{step}] done IGNORED - target unresponsive; backing off, "
                         f"continuing ({budget - step} steps left)")
                 ctx.decisions.append(_decision_line(step, "done", args, thought,
-                                                    "DEFERRED — target unresponsive; backing off, not stopping"))
+                                                    "DEFERRED - target unresponsive; backing off, not stopping"))
                 continue
             unused = [t for t in _ENDPOINT_TOOLS if t not in techniques_used]
             if unused and (budget - step) > 3 and done_deferrals < _DONE_DEFERRALS:
                 done_deferrals += 1
                 recent_actions[-1] = "deferred"
-                ctx.log(f"[{step}] done DEFERRED — you still have {budget - step} steps and haven't run "
+                ctx.log(f"[{step}] done DEFERRED - you still have {budget - step} steps and haven't run "
                         f"{', '.join(unused)} (endpoint-level, apply to ANY endpoint). Run them, THEN finish.")
                 ctx.decisions.append(_decision_line(step, "done", args, thought,
-                                                    f"DEFERRED — endpoint tools unused: {', '.join(unused)}"))
+                                                    f"DEFERRED - endpoint tools unused: {', '.join(unused)}"))
                 continue
             crit = critical_untested(schema_map, ctx.ledger)
             if crit and (budget - step) > 3 and hv_deferrals < _HV_DEFERRALS:
                 hv_deferrals += 1
                 recent_actions[-1] = "deferred"
-                ctx.log(f"[{step}] done DEFERRED — CRITICAL high-value fields still untested: {', '.join(crit[:5])}. "
-                        f"These are ATO/account-takeover primitives — auth_test them (anon/current/admin), THEN finish.")
+                ctx.log(f"[{step}] done DEFERRED - CRITICAL high-value fields still untested: {', '.join(crit[:5])}. "
+                        f"These are ATO/account-takeover primitives - auth_test them (anon/current/admin), THEN finish.")
                 ctx.decisions.append(_decision_line(step, "done", args, thought,
-                                                    f"DEFERRED — CRITICAL high-value untested: {', '.join(crit[:5])}"))
+                                                    f"DEFERRED - CRITICAL high-value untested: {', '.join(crit[:5])}"))
                 continue
             ctx.log(f"[{step}] done: {str(args.get('reason', ''))[:120]}")
             ctx.decisions.append(_decision_line(step, "done", args, thought,
                                                 f"STOP: {str(args.get('reason', ''))[:120]}"))
             logger.info("AGENT done: %s", args.get("reason", ""))
+            run_complete = True
             break
 
         if name in _NONPROBE_ACTIONS and noprobe_streak >= _NOPROBE_CAP and not degraded:
             recent_actions[-1] = "blocked"
             blocked_recon += 1
-            ctx.log(f"[{step}] {name} BLOCKED — {noprobe_streak} recon actions with no probe. You have "
+            ctx.log(f"[{step}] {name} BLOCKED - {noprobe_streak} recon actions with no probe. You have "
                     f"enough schema; SEND A REQUEST now: graphql / fuzz / sweep / dos.")
             ctx.decisions.append(_decision_line(step, name, args, thought,
-                                                f"BLOCKED — {noprobe_streak} recon actions, no probe; forced to test"))
+                                                f"BLOCKED - {noprobe_streak} recon actions, no probe; forced to test"))
             if blocked_recon >= _NOACTION_ABORT:
                 logger.warning("AGENT aborting: %d recon actions blocked, model refuses to probe", blocked_recon)
                 break
@@ -435,6 +486,12 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 and step - ctx.oob_injected_at >= _OOB_CHECK_DELAY):
             _auto_oob_check(ctx)
 
+        last_completed = step
+        if cp_on and (step + 1) % cp_every == 0:
+            _save_cp(step)
+    else:
+        run_complete = True  # for-loop exhausted the budget with no early break
+
     _finalize_trace()
     if tracer is not None:
         tracer.close({
@@ -444,6 +501,9 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             "vuln_types": [v.get("vuln_type") for v in ctx.vulns],
         })
 
+    _save_cp(last_completed, complete=run_complete)
+
     return {"vulnerabilities": ctx.vulns, "interactions": ctx.interactions,
             "steps": min(step + 1, budget), "covered_count": len(ctx.covered),
-            "notes": ctx.notes, "target_url": target_url, "tokens": ctx.tokens}
+            "notes": ctx.notes, "target_url": target_url, "tokens": ctx.tokens,
+            "run_id": run_id}

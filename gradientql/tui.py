@@ -199,21 +199,26 @@ def _has_key(settings: dict[str, Any]) -> bool:
 
 
 class MenuScreen(Screen):
-    BINDINGS = [("s", "start", "Start scan"), ("g", "settings", "Settings"), ("q", "quit", "Quit")]
+    BINDINGS = [("s", "start", "Start scan"), ("r", "resume", "Resume last"),
+                ("g", "settings", "Settings"), ("q", "quit", "Quit")]
 
     def compose(self) -> ComposeResult:
         with Center(id="logo_row"):
             yield Static(id="logo")
         with Center(id="menu_row"):
             with Vertical(id="menu"):
-                yield Button("Start scan", id="start", variant="primary")
-                yield Button("Settings", id="settings")
-                yield Button("Quit", id="quit")
+                yield Button("START SCAN", id="start", variant="primary")
+                yield Button("RESUME LAST", id="resume")
+                yield Button("SETTINGS", id="settings")
+                yield Button("QUIT", id="quit")
                 yield Static(id="summary", markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
         self._set_logo()
+        menu = self.query_one("#menu")
+        menu.border_title = "MAIN MENU"
+        menu.border_subtitle = "▓▒░"  # ▓▒░ retro fade
         self._refresh()
 
     def on_resize(self) -> None:
@@ -234,10 +239,13 @@ class MenuScreen(Screen):
         model = s.get("llm", {}).get("attacker_model", "?")
         proxy = s.get("http", {}).get("proxy") or "direct"
         safe = "on" if s.get("scanner", {}).get("safe_mode") else "off"
+        maxtok = s.get("llm", {}).get("attacker_max_tokens", "?")
+        ckpt = "on" if s.get("scanner", {}).get("checkpoint", {}).get("enabled") else "off"
         key = "set" if _has_key(s) else "NOT SET (config/api_key.local or OPENROUTER_API_KEY)"
         self.query_one("#summary", Static).update(
-            f"target   {url}\nbudget   {b} steps    model  {model}\n"
-            f"proxy    {proxy}    safe mode  {safe}\napi key  {key}")
+            f"TARGET   {url}\nBUDGET   {b} steps    MODEL  {model}\n"
+            f"PROXY    {proxy}    SAFE MODE  {safe}\nMAX TOK  {maxtok}    CHECKPOINT  {ckpt}\n"
+            f"API KEY  {key}")
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -259,11 +267,35 @@ class MenuScreen(Screen):
         else:
             self.app.push_screen(DashboardScreen())
 
+    def action_resume(self) -> None:
+        if getattr(self.app, "scan_active", False):
+            self.notify("A scan is still finishing. Try again in a moment.", severity="warning")
+            return
+        from .scanner import checkpoint as _cp
+        s = self.app.settings
+        cpf = _cp.latest(s)
+        if cpf is None:
+            self.notify("No saved runs to resume (output/checkpoints is empty).", severity="warning")
+            return
+        if not _has_key(s):
+            env = s.get("llm", {}).get("api_key_env", "OPENROUTER_API_KEY")
+            self.notify(f"No API key. Set {env} or config/api_key.local.", severity="error")
+            return
+        try:
+            data = _cp.load(cpf)
+        except (ValueError, OSError) as e:  # JSONDecodeError is a ValueError
+            self.notify(f"Checkpoint is unreadable: {str(e)[:60]}", severity="error")
+            return
+        self.app.target = data.get("target_url") or self.app.target
+        self.app.push_screen(DashboardScreen(resume=data))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "quit":
             self.action_quit()
         elif event.button.id == "settings":
             self.action_settings()
+        elif event.button.id == "resume":
+            self.action_resume()
         elif event.button.id == "start":
             self.action_start()
 
@@ -391,7 +423,7 @@ class AttacksScreen(Screen):
 class DashboardScreen(Screen):
     BINDINGS = [("escape", "back", "Stop & back")]
 
-    def __init__(self) -> None:
+    def __init__(self, resume: dict[str, Any] | None = None) -> None:
         super().__init__()
         self._start = 0.0
         self._shown = 0
@@ -401,6 +433,8 @@ class DashboardScreen(Screen):
         self._alive = True
         self._settings: dict[str, Any] = {}
         self._steer_q: queue.Queue = queue.Queue()
+        self._resume = resume
+        self._run_id: str | None = resume.get("run_id") if resume else None
 
     def on_unmount(self) -> None:
         self._alive = False
@@ -435,7 +469,7 @@ class DashboardScreen(Screen):
             with VerticalScroll(id="loot_scroll"):
                 yield Static(loot_text(None), id="loot")
         yield DataTable(id="findings")
-        yield Input(placeholder="steer the agent — e.g. 'search for DoS now' — press Enter to send", id="steer")
+        yield Input(placeholder="steer the agent - e.g. 'search for DoS now' - press Enter to send", id="steer")
         yield Footer()
 
     def _set_header(self, status: str, style: str, detail: str) -> None:
@@ -452,7 +486,8 @@ class DashboardScreen(Screen):
             self.query_one("#activity", RichLog).write(Text(msg, style=style))
 
     def on_mount(self) -> None:
-        self.app.target = self.app.settings.get("target", {}).get("url") or self.app.target
+        if self._resume is None:  # a resumed run keeps the target action_resume set from the checkpoint
+            self.app.target = self.app.settings.get("target", {}).get("url") or self.app.target
         self._settings = copy.deepcopy(self.app.settings)
         self.query_one("#cov_scroll").border_title = "coverage map"
         activity = self.query_one("#activity")
@@ -471,6 +506,7 @@ class DashboardScreen(Screen):
     @work(thread=True, group="scan")
     def run_scan(self) -> None:
         from .core.llm import verify_key
+        from .scanner import checkpoint as _cp
         from .scanner.run import run_scan
         self.app.scan_active = True
         try:
@@ -478,12 +514,22 @@ class DashboardScreen(Screen):
             if not ok:
                 self.app.call_from_thread(self._blocked, msg)
                 return
+            if self._run_id is None:
+                self._run_id = _cp.new_run_id()
+            verb = "resuming" if self._resume else "scanning"
             self.app.call_from_thread(self._set_header, "SCANNING", f"bold {GOLD_HI}", self.app.target)
-            self.app.call_from_thread(self._log, f"scanning {self.app.target}", "grey62")
+            self.app.call_from_thread(self._log, f"{verb} {self.app.target}", "grey62")
+            if _cp.is_enabled(self._settings):
+                start_at = (int(self._resume.get("step", -1)) + 1) if self._resume else 0
+                self.app.call_from_thread(
+                    self._log,
+                    f"run {self._run_id} · auto-checkpoint every {_cp.interval(self._settings)} steps"
+                    + (f" · resuming at step {start_at}" if self._resume else ""),
+                    f"bold {GOLD}")
             try:
                 result = run_scan(self._settings, self.app.target, progress_cb=self._on_step,
                                   report=False, should_stop=lambda: not self._alive,
-                                  steer=self._drain_steer)
+                                  steer=self._drain_steer, run_id=self._run_id, resume=self._resume)
             except Exception as e:  # noqa: BLE001
                 result = {"vulnerabilities": [], "target_url": self.app.target, "steps": 0,
                           "interactions": [], "error": f"scan error: {str(e)[:120]}"}
@@ -551,6 +597,10 @@ class DashboardScreen(Screen):
         n = len(result.get("vulnerabilities", []))
         self._set_header("COMPLETE", f"bold {OK_GREEN}", f"{n} findings   (esc to go back)")
         self._log(f"scan complete, {n} finding(s)", f"bold {OK_GREEN}")
+        rid = result.get("run_id") or self._run_id
+        from .scanner import checkpoint as _cp
+        if rid and _cp.is_enabled(self._settings):
+            self._log(f"resume this run:  gradientql --resume {rid}", "grey62")
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -563,7 +613,7 @@ class GradientQLApp(App):
     #logo_row { height: auto; }
     #menu_row { height: auto; }
     #logo { width: auto; height: auto; margin: 1 0 0 0; }
-    #menu { width: 66; height: auto; border: round $primary; padding: 1 2; margin-top: 1; }
+    #menu { width: 66; height: auto; border: double $primary; padding: 1 2; margin-top: 1; }
     #menu Button { width: 100%; margin-bottom: 1; }
     #summary { margin-top: 1; color: $text-muted; }
     #title { text-style: bold; color: $primary; padding: 1 1 0 1; }
@@ -580,15 +630,15 @@ class GradientQLApp(App):
     #statbar #pbar { width: 28; }
     #statbar #stats { width: 1fr; color: $accent; padding-left: 2; }
     #dash_body { height: 1fr; }
-    #cov_scroll { width: 33%; border: round $primary; padding: 0 1; }
-    #activity { width: 40%; border: round $primary; padding: 0 1;
+    #cov_scroll { width: 33%; border: double $primary; padding: 0 1; }
+    #activity { width: 40%; border: double $primary; padding: 0 1;
                 background: transparent; scrollbar-size-horizontal: 0; scrollbar-size-vertical: 1;
                 scrollbar-background: $background; scrollbar-color: $primary; }
-    #loot_scroll { width: 27%; border: round $primary; padding: 0 1; }
+    #loot_scroll { width: 27%; border: double $primary; padding: 0 1; }
     #coverage { width: auto; height: auto; }
     #loot { width: auto; height: auto; }
-    #findings { height: 9; border: round $primary; }
-    #steer { height: 3; border: round $accent; }
+    #findings { height: 9; border: double $primary; }
+    #steer { height: 3; border: double $accent; }
     """
 
     def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:

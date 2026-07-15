@@ -1,4 +1,4 @@
-"""Tracing — full per-step observability into what the model SAW and DID."""
+"""Per-step trace of prompts, responses, and actions."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class AgentTracer:
         self.md_path = base + ".md"
         self._jf = open(self.jsonl_path, "w", encoding="utf-8")
         self._mf = open(self.md_path, "w", encoding="utf-8")
-        self._mf.write(f"# Agent trace — {target_url}\n\n_started {ts} UTC_\n\n"
+        self._mf.write(f"# Agent trace - {target_url}\n\n_started {ts} UTC_\n\n"
                        f"Per-step **full** prompts/responses are in `{os.path.basename(self.jsonl_path)}`; "
                        f"this file is a readable digest.\n")
         self.count = 0
@@ -45,7 +45,7 @@ class AgentTracer:
     def _write_md(self, rec: dict[str, Any]) -> None:
         st = rec.get("state", {}) or {}
         m = self._mf
-        m.write(f"\n---\n\n## Step {rec.get('step')} — `{rec.get('action') or '(no valid action)'}`\n\n")
+        m.write(f"\n---\n\n## Step {rec.get('step')} - `{rec.get('action') or '(no valid action)'}`\n\n")
         if rec.get("thought"):
             m.write(f"**Thought:** {rec['thought']}\n\n")
         args = rec.get("args")
@@ -53,7 +53,7 @@ class AgentTracer:
             m.write("**Action args:**\n\n```json\n" + json.dumps(args, indent=2, default=str)[:4000] + "\n```\n\n")
         io = rec.get("io") or []
         if io:
-            m.write(f"**Wire I/O — {len(io)} request(s) this step (FULL response, not the model's bounded view):**\n\n")
+            m.write(f"**Wire I/O - {len(io)} request(s) this step (FULL response, not the model's bounded view):**\n\n")
             for i, e in enumerate(io):
                 lbl = e.get("label") or "?"
                 m.write(f"<details><summary>req {i + 1}: `{lbl}` → HTTP {e.get('status')}</summary>\n\n```graphql\n"
@@ -80,7 +80,7 @@ class AgentTracer:
             f"{f}:{e.get('verdict') or e.get('auto') or '?'}(x{e.get('attempts', 0)})"
             + ("⚠" if e.get("finding") else "")
             for f, e in list(led.items())[:25])
-        m.write(f"**State after** — identity={st.get('identity')} · findings={st.get('findings')} · "
+        m.write(f"**State after** - identity={st.get('identity')} · findings={st.get('findings')} · "
                 f"creds={len(st.get('credentials', []))} · harvested={st.get('harvested')}\n\n")
         if st.get("searched"):
             m.write("  searched: " + ", ".join(st["searched"]) + "\n\n")
@@ -88,7 +88,7 @@ class AgentTracer:
             m.write("  facts: " + " | ".join(st["facts"]) + "\n\n")
         m.write(f"  ledger: {led_lines or '(empty)'}\n\n")
         if self.count == 1:
-            m.write("<details><summary>full prompt (step 1 — later prompts in the .jsonl)</summary>\n\n```\n"
+            m.write("<details><summary>full prompt (step 1 - later prompts in the .jsonl)</summary>\n\n```\n"
                     + str(rec.get("prompt", ""))[:40000] + "\n```\n\n</details>\n\n")
 
     def close(self, summary: dict[str, Any]) -> None:

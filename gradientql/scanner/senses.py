@@ -1,4 +1,4 @@
-"""Senses — deterministic, signature-based confirmation of vulns + response classification."""
+"""Deterministic, signature-based vuln confirmation and response classification."""
 
 from __future__ import annotations
 
@@ -65,12 +65,12 @@ def detect_dos_surface(query: str, response: dict) -> tuple[str | None, str]:
     elif n_directives >= 20:
         if not (isinstance(rt, (int, float)) and rt >= _DOS_SLOW_MS):
             return None, ""
-        overload = f"{n_directives} stacked directives ({rt}ms — server slowed, no directive limit)"
+        overload = f"{n_directives} stacked directives ({rt}ms - server slowed, no directive limit)"
     elif top_n >= 50:
         if top_field.startswith("__"):
             if not (isinstance(rt, (int, float)) and rt >= _DOS_SLOW_MS):
                 return None, ""
-            overload = f"{top_n}× {top_field} ({rt}ms — server slowed under load)"
+            overload = f"{top_n}× {top_field} ({rt}ms - server slowed under load)"
         else:
             overload = f"{top_n}× {top_field} field duplication"
     elif depth >= 20:

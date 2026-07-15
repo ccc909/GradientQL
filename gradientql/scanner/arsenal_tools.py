@@ -1,4 +1,4 @@
-"""Arsenal tools — thin wrappers over the utils/ arsenal (crypto, raw sockets, OOB state, payloads)."""
+"""Arsenal tools - thin wrappers over the utils/ arsenal (crypto, raw sockets, OOB state, payloads)."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def tool_smuggle(target_url: str) -> tuple[bool, str]:
         if getattr(r, "vulnerable", False):
             return True, f"{name} desync ({getattr(r, 'confidence', '?')})"
     if completed == 0:
-        return False, ("smuggle probes could not execute (socket/TLS/transport error) — request "
+        return False, ("smuggle probes could not execute (socket/TLS/transport error) - request "
                        "smuggling was NOT tested, so this is NOT a clean result")
     return False, "no smuggling/desync detected"
 
@@ -121,11 +121,11 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
         r = requests.get(target_url, params={"query": "{__typename}"}, cookies=jar, timeout=12)
         executed = r.status_code == 200 and ("__typename" in r.text or '"data"' in r.text)
         if not executed:
-            out.append(f"GET-exec: rejected (HTTP {r.status_code}) — not GET-CSRFable")
+            out.append(f"GET-exec: rejected (HTTP {r.status_code}) - not GET-CSRFable")
         elif n_mutations == 0:
             out.append("GET-exec: queries run via GET, but the schema has 0 mutations -> classic CSRF N/A")
         else:
-            out.append("GET-exec: queries RUN via GET — CSRF-exploitable ONLY if a mutation also works "
+            out.append("GET-exec: queries RUN via GET - CSRF-exploitable ONLY if a mutation also works "
                        "via GET; verify by running a real mutation over GET before reporting")
     except Exception as e:  # noqa: BLE001
         out.append(f"GET-exec: check failed ({str(e)[:50]})")
@@ -141,10 +141,10 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
                          and isinstance(d, dict) and isinstance(d.get("__typename"), str))
             if confirmed:
                 out.append("GET-MUTATION CONFIRMED: a mutation operation EXECUTED over HTTP GET "
-                           "(mutation{__typename} returned data, no errors) — state-changing mutations are "
+                           "(mutation{__typename} returned data, no errors) - state-changing mutations are "
                            "CSRF-exploitable via a crafted link/img/form. This IS a CSRF finding.")
             else:
-                out.append(f"GET-mutation: blocked over GET (HTTP {r.status_code}) — mutations not GET-runnable")
+                out.append(f"GET-mutation: blocked over GET (HTTP {r.status_code}) - mutations not GET-runnable")
         except Exception as e:  # noqa: BLE001
             out.append(f"GET-mutation: check failed ({str(e)[:50]})")
     smuggled = []
@@ -158,7 +158,7 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
             continue
     if smuggled:
         out.append(f"content-type: GraphQL also executes under {', '.join(smuggled)} (a CORS-preflight-free "
-                   "simple request) — bypasses CSRF protection ONLY IF the endpoint relies on a json-only "
+                   "simple request) - bypasses CSRF protection ONLY IF the endpoint relies on a json-only "
                    "guard + cookie auth; verify a guard exists before reporting (advisory, not auto-recorded).")
     try:
         origin = "https://evil.example"
@@ -167,12 +167,12 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
         acao = r.headers.get("Access-Control-Allow-Origin", "")
         acac = r.headers.get("Access-Control-Allow-Credentials", "").lower()
         if acao == origin and acac == "true":
-            out.append(f"CORS: reflects arbitrary Origin WITH credentials ({acao}) — EXPLOITABLE")
+            out.append(f"CORS: reflects arbitrary Origin WITH credentials ({acao}) - EXPLOITABLE")
         elif acao in (origin, "*"):
-            out.append(f"CORS: permissive (ACAO={acao}, creds={acac or 'absent'}) — review, not a clean finding")
+            out.append(f"CORS: permissive (ACAO={acao}, creds={acac or 'absent'}) - review, not a clean finding")
         else:
             out.append(f"CORS: locked down (ACAO={acao or 'absent'})")
     except Exception as e:  # noqa: BLE001
         out.append(f"CORS: check failed ({str(e)[:50]})")
-    out.append("(cache-poisoning / CSWSH: NOT auto-verified — do NOT report without a working browser PoC)")
+    out.append("(cache-poisoning / CSWSH: NOT auto-verified - do NOT report without a working browser PoC)")
     return out

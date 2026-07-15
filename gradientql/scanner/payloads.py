@@ -1,4 +1,4 @@
-"""Attack payload catalog — per-class probe ladders the `fuzz` action draws from."""
+"""Per-class attack-payload ladders the `fuzz` action draws from."""
 
 from __future__ import annotations
 
