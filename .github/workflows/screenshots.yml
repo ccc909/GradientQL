@@ -1,0 +1,49 @@
+name: Screenshots
+
+# Regenerate the README TUI screenshots (docs/*.svg) whenever the TUI or the harness changes,
+# and commit them back. Also runnable on demand from the Actions tab.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gradientql/tui.py'
+      - 'scripts/generate_screenshots.py'
+      - '.github/workflows/screenshots.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install "textual>=7,<8" "rich>=13"
+
+      - name: Generate screenshots
+        run: python scripts/generate_screenshots.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/menu.svg docs/settings.svg docs/dashboard.svg
+          if git diff --cached --quiet; then
+            echo "Screenshots unchanged."
+          else
+            git commit -m "Regenerate TUI screenshots [skip ci]"
+            git push
+          fi
