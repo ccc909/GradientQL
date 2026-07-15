@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import os
 import pathlib
+import queue
 import time
 from typing import Any
 
@@ -12,7 +13,7 @@ from rich.style import Style
 from rich.text import Span, Text
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Center, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.theme import Theme
 from textual.validation import Integer, Number
@@ -201,12 +202,14 @@ class MenuScreen(Screen):
     BINDINGS = [("s", "start", "Start scan"), ("g", "settings", "Settings"), ("q", "quit", "Quit")]
 
     def compose(self) -> ComposeResult:
-        yield Static(id="logo")
-        with Vertical(id="menu"):
-            yield Button("Start scan", id="start", variant="primary")
-            yield Button("Settings", id="settings")
-            yield Button("Quit", id="quit")
-            yield Static(id="summary", markup=False)
+        with Center(id="logo_row"):
+            yield Static(id="logo")
+        with Center(id="menu_row"):
+            with Vertical(id="menu"):
+                yield Button("Start scan", id="start", variant="primary")
+                yield Button("Settings", id="settings")
+                yield Button("Quit", id="quit")
+                yield Static(id="summary", markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -397,9 +400,28 @@ class DashboardScreen(Screen):
         self._ctx: Any = None
         self._alive = True
         self._settings: dict[str, Any] = {}
+        self._steer_q: queue.Queue = queue.Queue()
 
     def on_unmount(self) -> None:
         self._alive = False
+
+    def _drain_steer(self) -> list[str]:
+        out: list[str] = []
+        try:
+            while True:
+                out.append(self._steer_q.get_nowait())
+        except queue.Empty:
+            pass
+        return out
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "steer":
+            return
+        msg = event.value.strip()
+        event.input.value = ""
+        if msg:
+            self._steer_q.put(msg)
+            self._log(f"operator: {msg}", f"bold {GOLD_HI}")
 
     def compose(self) -> ComposeResult:
         yield Static("", id="dash_header", markup=False)
@@ -413,6 +435,7 @@ class DashboardScreen(Screen):
             with VerticalScroll(id="loot_scroll"):
                 yield Static(loot_text(None), id="loot")
         yield DataTable(id="findings")
+        yield Input(placeholder="steer the agent — e.g. 'search for DoS now' — press Enter to send", id="steer")
         yield Footer()
 
     def _set_header(self, status: str, style: str, detail: str) -> None:
@@ -438,6 +461,7 @@ class DashboardScreen(Screen):
         self.query_one("#loot_scroll").border_title = "loot"
         tbl = self.query_one("#findings", DataTable)
         tbl.border_title = "findings"
+        self.query_one("#steer", Input).border_title = "steer the agent"
         tbl.add_columns("score", "finding", "target")
         self._set_header("VERIFYING", "yellow", self.app.target)
         self._start = time.monotonic()
@@ -458,7 +482,8 @@ class DashboardScreen(Screen):
             self.app.call_from_thread(self._log, f"scanning {self.app.target}", "grey62")
             try:
                 result = run_scan(self._settings, self.app.target, progress_cb=self._on_step,
-                                  report=False, should_stop=lambda: not self._alive)
+                                  report=False, should_stop=lambda: not self._alive,
+                                  steer=self._drain_steer)
             except Exception as e:  # noqa: BLE001
                 result = {"vulnerabilities": [], "target_url": self.app.target, "steps": 0,
                           "interactions": [], "error": f"scan error: {str(e)[:120]}"}
@@ -485,8 +510,12 @@ class DashboardScreen(Screen):
         auth = "auth" if ident not in ("anon", "hdr") else "anon"
         pct = int(self._step / self._budget * 100) if self._budget else 0
         model = self.app.settings.get("llm", {}).get("attacker_model", "?")
+        tok = getattr(ctx, "tokens", None) or {}
+        tt = tok.get("total", 0)
+        tks = f"{tt / 1000:.1f}k" if tt >= 1000 else str(tt)
+        cost = f" ~${tok['cost']:.2f}" if tok.get("cost") else ""
         return (f"step {self._step}/{self._budget} {pct}%    {mm:02d}:{ss:02d}    "
-                f"req {reqs} ({rate:.1f}/s)    find {finds}    {auth}    {model}")
+                f"req {reqs} ({rate:.1f}/s)    find {finds}    tok {tks}{cost}    {auth}    {model}")
 
     def _tick(self) -> None:
         if self._alive and self._ctx is not None:
@@ -531,6 +560,8 @@ class GradientQLApp(App):
     TITLE = "GradientQL"
     CSS = """
     Screen { align: left top; }
+    #logo_row { height: auto; }
+    #menu_row { height: auto; }
     #logo { width: auto; height: auto; margin: 1 0 0 0; }
     #menu { width: 66; height: auto; border: round $primary; padding: 1 2; margin-top: 1; }
     #menu Button { width: 100%; margin-bottom: 1; }
@@ -557,6 +588,7 @@ class GradientQLApp(App):
     #coverage { width: auto; height: auto; }
     #loot { width: auto; height: auto; }
     #findings { height: 9; border: round $primary; }
+    #steer { height: 3; border: round $accent; }
     """
 
     def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:

@@ -103,9 +103,28 @@ def _auto_oob_check(ctx: ActionContext) -> None:
             ctx.log(f"[{ctx.step}] ⚠ AUTO-OOB: blind SSRF/XXE CONFIRMED ({proto} callback)")
 
 
+def _accumulate_tokens(acc: dict[str, Any], msg: Any) -> None:
+    """Add one LLM response's token usage (and cost, if the provider reports it) to `acc`."""
+    try:
+        um = getattr(msg, "usage_metadata", None) or {}
+        acc["input"] += int(um.get("input_tokens") or 0)
+        acc["output"] += int(um.get("output_tokens") or 0)
+        acc["total"] += int(um.get("total_tokens") or 0)
+        acc["reasoning"] += int((um.get("output_token_details") or {}).get("reasoning") or 0)
+        acc["calls"] += 1
+        rmeta = getattr(msg, "response_metadata", None) or {}
+        cost = rmeta.get("cost")
+        if cost is None:
+            cost = (rmeta.get("token_usage") or {}).get("cost")
+        if cost:
+            acc["cost"] += float(cost)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, budget: int,
         trace: Any = None, verbose: bool = False, progress_cb: Any = None,
-        should_stop: Any = None) -> dict[str, Any]:
+        should_stop: Any = None, steer: Any = None) -> dict[str, Any]:
     """Drive the attacker LLM's decision loop for up to `budget` steps.
 
     Streams findings to the reporter as they are confirmed and, when `trace` is
@@ -155,6 +174,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
 
     recent_actions: list[str] = []
     recent_targets: list[str] = []
+    steering_log: list[dict[str, Any]] = []
     techniques_used: set[str] = set()
     consecutive_dead = 0
     backoffs = 0
@@ -206,6 +226,19 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             except Exception:  # noqa: BLE001
                 pass
 
+        if steer is not None:
+            try:
+                msgs = steer() or []
+            except Exception:  # noqa: BLE001
+                msgs = []
+            for m in (msgs if isinstance(msgs, (list, tuple)) else [msgs]):
+                if not m:
+                    continue
+                steering_log.append({"step": step, "msg": str(m)})
+                ctx.log(f"[{step}] operator steering: {m}")
+                logger.info("AGENT: operator steering at step %d: %s", step, m)
+        active_steer = [x["msg"] for x in steering_log if step - x["step"] <= 3]
+
         degraded = consecutive_dead >= _DEGRADED_AT
         if degraded:
             backoffs += 1
@@ -248,7 +281,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             "covered": ctx.covered, "credentials": ctx.credentials, "facts": ctx.facts,
             "searched": ctx.searched, "findings": len(ctx.vulns), "vulns": ctx.vulns, "ledger": ctx.ledger,
             "notes": ctx.notes, "history": ctx.history, "decisions": ctx.decisions,
-            "fixation": fixation,
+            "fixation": fixation, "steering": active_steer,
         })
 
         llm_error: str | None = None
@@ -284,6 +317,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
 
         consec_llm_error = 0
         circuit_waits = 0
+        _accumulate_tokens(ctx.tokens, result_msg)
         content = getattr(result_msg, "content", "")
         act = extract_action(content)
         if tracer is not None:
@@ -412,4 +446,4 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
 
     return {"vulnerabilities": ctx.vulns, "interactions": ctx.interactions,
             "steps": min(step + 1, budget), "covered_count": len(ctx.covered),
-            "notes": ctx.notes, "target_url": target_url}
+            "notes": ctx.notes, "target_url": target_url, "tokens": ctx.tokens}

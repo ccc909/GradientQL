@@ -53,6 +53,8 @@ class ActionContext:
     tempmail: Any = None
     step: int = 0
     oob_injected_at: int | None = None
+    tokens: dict[str, Any] = field(default_factory=lambda: {
+        "input": 0, "output": 0, "reasoning": 0, "total": 0, "cost": 0.0, "calls": 0})
 
     _seen_finding_keys: set[str] = field(default_factory=set)
     _retracted_sigs: set[str] = field(default_factory=set)

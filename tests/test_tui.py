@@ -156,6 +156,27 @@ async def test_dashboard_blocks_on_bad_key(monkeypatch):
     assert app.result is None
 
 
+async def test_dashboard_steer_box_and_queue(monkeypatch):
+    monkeypatch.setattr("gradientql.core.llm.verify_key", lambda s: (True, "ok"))
+    captured: dict = {}
+    monkeypatch.setattr(
+        "gradientql.scanner.run.run_scan",
+        lambda *a, **k: captured.__setitem__("steer", k.get("steer"))
+        or {"vulnerabilities": [], "target_url": "x", "steps": 0, "interactions": []})
+    app = tui.GradientQLApp({"target": {"url": "http://t/graphql"}, "scanner": {}, "llm": {}, "http": {}},
+                            "http://t/graphql")
+    async with app.run_test() as pilot:
+        app.push_screen(tui.DashboardScreen())
+        await pilot.pause()
+        scr = app.screen
+        assert scr.query_one("#steer") is not None            # steer box present
+        scr._steer_q.put("search for DoS now")
+        scr._steer_q.put("check importPaste")
+        assert scr._drain_steer() == ["search for DoS now", "check importPaste"]
+        assert scr._drain_steer() == []                        # drained
+        assert callable(captured.get("steer"))                 # steer callback passed to run_scan
+
+
 async def test_dashboard_surfaces_scan_error(monkeypatch):
     monkeypatch.setattr("gradientql.core.llm.verify_key", lambda s: (True, "ok"))
     monkeypatch.setattr(
@@ -220,7 +241,7 @@ async def test_settings_budget_accepts_decimal():
 async def test_settings_url_scheme_prepended_and_model_fallback():
     from textual.widgets import Input
     app = tui.GradientQLApp({"target": {"url": "http://old/graphql"}, "scanner": {"budget": 60},
-                             "llm": {"attacker_model": "z-ai/glm-5.2"}, "http": {}})
+                             "llm": {"attacker_model": "qwen/qwen3.7-max"}, "http": {}})
     async with app.run_test() as pilot:
         await pilot.click("#settings")
         await pilot.pause()
@@ -229,7 +250,7 @@ async def test_settings_url_scheme_prepended_and_model_fallback():
         await pilot.click("#back")
         await pilot.pause()
     assert app.settings["target"]["url"] == "https://example.com/graphql"
-    assert app.settings["llm"]["attacker_model"] == "z-ai/glm-5.2"      # empty reverted, not blanked
+    assert app.settings["llm"]["attacker_model"] == "qwen/qwen3.7-max"   # empty reverted, not blanked
 
 
 async def test_start_rejects_whitespace_url():

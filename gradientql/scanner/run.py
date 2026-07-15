@@ -23,7 +23,7 @@ logger = logging.getLogger("gradientql.scanner")
 
 
 def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
-             report: bool = True, should_stop: Any = None) -> dict[str, Any]:
+             report: bool = True, should_stop: Any = None, steer: Any = None) -> dict[str, Any]:
     """Introspect the target, run the agent loop, and return deduplicated findings.
 
     Resets the shared LLM caches, circuit breaker, and OOB session as a side
@@ -78,7 +78,7 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
     trace = settings.get("scanner", {}).get("trace")
     verbose = bool(settings.get("scanner", {}).get("verbose"))
     result = loop.run(settings, schema_map, target_url, budget, trace=trace, verbose=verbose,
-                      progress_cb=progress_cb, should_stop=should_stop)
+                      progress_cb=progress_cb, should_stop=should_stop, steer=steer)
     result["vulnerabilities"] = dedup_findings(vulns + result.get("vulnerabilities", []))
 
     _reconcile_oob(settings, result)
@@ -125,6 +125,13 @@ def _print_report(result: dict[str, Any]) -> None:
     print(f"\nTarget:   {result.get('target_url')}")
     print(f"Steps:    {result.get('steps')}")
     print(f"Requests: {len(result.get('interactions', []))}")
+    tok = result.get("tokens") or {}
+    if tok.get("calls"):
+        reasoning = f", {tok['reasoning']:,} reasoning" if tok.get("reasoning") else ""
+        cost = f"  ~${tok['cost']:.3f}" if tok.get("cost") else ""
+        print(f"Tokens:   {tok.get('total', 0):,} total "
+              f"({tok.get('input', 0):,} in / {tok.get('output', 0):,} out{reasoning}) "
+              f"over {tok['calls']} calls{cost}")
     print(f"Findings: {len(vulns)}")
     if vulns:
         print("\n--- Findings ---")

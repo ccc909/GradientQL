@@ -47,6 +47,51 @@ def test_should_stop_halts_before_any_action(monkeypatch):
     assert res["vulnerabilities"] == []
 
 
+def test_accumulate_tokens():
+    from types import SimpleNamespace
+
+    from gradientql.scanner.loop import _accumulate_tokens
+    acc = {"input": 0, "output": 0, "reasoning": 0, "total": 0, "cost": 0.0, "calls": 0}
+    msg = SimpleNamespace(
+        usage_metadata={"input_tokens": 30, "output_tokens": 291, "total_tokens": 321,
+                        "output_token_details": {"reasoning": 274}},
+        response_metadata={"cost": 0.0021})
+    _accumulate_tokens(acc, msg)
+    assert acc["input"] == 30 and acc["output"] == 291 and acc["total"] == 321
+    assert acc["reasoning"] == 274 and acc["calls"] == 1
+    assert abs(acc["cost"] - 0.0021) < 1e-9
+    _accumulate_tokens(acc, SimpleNamespace(usage_metadata=None, response_metadata=None))  # tolerant
+    assert acc["input"] == 30 and acc["total"] == 321      # token counts unchanged on empty usage
+
+
+def test_steer_message_reaches_the_prompt(monkeypatch):
+    monkeypatch.setattr(loop.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
+    import gradientql.utils.oob as oobmod
+    monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
+    client = MockClient(default={"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200})
+    monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: client)
+    prompts = []
+    base = scripted_llm([{"action": "sweep", "args": {}}, {"action": "done", "args": {}}])
+
+    def capture(llm, prompt_text, **k):
+        prompts.append(prompt_text)
+        return base(llm, prompt_text, **k)
+
+    monkeypatch.setattr(loop, "invoke_with_circuit_breaker", capture)
+    calls = {"n": 0}
+
+    def steer():
+        calls["n"] += 1
+        return ["search for DoS now"] if calls["n"] == 1 else []
+
+    schema = {"_query_type": "Query",
+              "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+              "User": {"id": {"args": [], "return_type": "Int", "description": ""}}}
+    loop.run({"target": {}, "scanner": {}}, schema, "http://t/graphql", 5, steer=steer)
+    assert any("OPERATOR STEERING" in p and "search for DoS now" in p for p in prompts)
+
+
 def test_recon_report_done(patch_loop):
     client = MockClient(default={"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200})
     actions = [{"action": "sweep", "args": {}},
