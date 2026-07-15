@@ -208,10 +208,10 @@ interface together with `--url`, or `--no-tui` to force plain log output.
 
 The interface is keyboard- and mouse-driven; the active keys show in the footer.
 
-- **Menu** — `s` starts a scan, `g` opens settings, `q` quits.
-- **Settings and attacks** — edit the fields and switches; the Attacks button opens the
+- **Menu**: `s` starts a scan, `g` opens settings, `q` quits.
+- **Settings and attacks**: edit the fields and switches; the Attacks button opens the
   per-technique toggles. `Esc` (or Back) saves and returns, and changes apply to the next scan.
-- **Dashboard** — opens when a scan starts and updates in place. `Esc` stops the scan and returns to
+- **Dashboard**: opens when a scan starts and updates in place. `Esc` stops the scan and returns to
   the menu.
 
 A scan needs a target URL and a working key; the dashboard verifies the key before it starts and
@@ -224,9 +224,9 @@ injected into the model's next prompt as an operator instruction that takes prio
 plan, and it is recorded in the trace. Use it to focus the run ("test the upload field for path
 traversal"), flag a miss ("you skipped importPaste"), or change tack ("stop recon, try DoS now").
 
-- **Interactive interface** — type into the steering box at the bottom of the dashboard and press
+- **Interactive interface**: type into the steering box at the bottom of the dashboard and press
   Enter. The message shows in the activity feed as `operator: ...`.
-- **Plain-log mode** — in an interactive terminal, type a line and press Enter at any point during
+- **Plain-log mode**: in an interactive terminal, type a line and press Enter at any point during
   the scan and it is picked up on the next step. This is disabled when input is piped or redirected.
 
 A steering message stays in view for a few steps so the agent does not lose it mid-action.
