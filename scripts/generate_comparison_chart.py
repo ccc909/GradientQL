@@ -37,8 +37,8 @@ CATS = [
 W = 726
 LABEL_R = 238
 PAD_R = 22
-PAD_T = 150
-PAD_B = 44
+PAD_T = 100
+PAD_B = 40
 ROW_H = 36
 SQ = 17
 GAP = 4
@@ -62,19 +62,15 @@ def main() -> None:
     s.append(f'<rect width="{W}" height="{H}" fill="{BG}"/>')
     s.append(f'<rect x="6" y="6" width="{W - 12}" height="{H - 12}" fill="none" stroke="{GOLD}" stroke-width="2"/>')
     s.append(f'<rect x="11" y="11" width="{W - 22}" height="{H - 22}" fill="none" stroke="{GOLD}" stroke-width="1"/>')
-    s.append(f'<text x="{W / 2:.0f}" y="43" fill="{GOLD_HI}" font-size="21" font-weight="700" '
-             f'text-anchor="middle" letter-spacing="1">DVGA detection by model</text>')
-    s.append(f'<text x="{W / 2:.0f}" y="64" fill="{MUTED}" font-size="12" text-anchor="middle">'
-             f'5 runs @ budget 30  ·  filled segments = runs (of 5) that found the category</text>')
     grid_bottom = PAD_T + len(CATS) * ROW_H
     # column headers: model name, mean findings/run, mean tokens/run
     for m, (name, mean, tok) in enumerate(MODELS):
         cx = col_x(m) + COL_W / 2
-        s.append(f'<text x="{cx:.0f}" y="98" fill="{TEXT}" font-size="14.5" font-weight="700" '
+        s.append(f'<text x="{cx:.0f}" y="46" fill="{TEXT}" font-size="14.5" font-weight="700" '
                  f'text-anchor="middle">{name}</text>')
-        s.append(f'<text x="{cx:.0f}" y="119" fill="{GOLD}" font-size="12.5" font-weight="600" '
+        s.append(f'<text x="{cx:.0f}" y="67" fill="{GOLD}" font-size="12.5" font-weight="600" '
                  f'text-anchor="middle">{mean} findings / run</text>')
-        s.append(f'<text x="{cx:.0f}" y="136" fill="{MUTED}" font-size="11.5" text-anchor="middle">'
+        s.append(f'<text x="{cx:.0f}" y="84" fill="{MUTED}" font-size="11.5" text-anchor="middle">'
                  f'{tok} tokens / run</text>')
     # column separators
     for m in range(1, len(MODELS)):

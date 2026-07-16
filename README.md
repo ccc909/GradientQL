@@ -99,7 +99,10 @@ decision, so runs are non-deterministic and differ from one another.
 essentially every run and separate on the multi-step authentication chains, where glm is strongest and
 the small, fast gpt-oss model is weakest.
 
-<p align="center"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model" width="720"></p>
+Each row below is one category over five runs at a 30-step budget; the filled segments are the runs
+(out of five) in which that model found it.
+
+<p align="center"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="720"></p>
 
 DVGA lists 21 named vulnerabilities (OS command injection is counted as two variants). Three of them
 (stored XSS, HTML injection, log injection) require a browser or access to the server logs and are
