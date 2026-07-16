@@ -492,6 +492,11 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             res = Result(observation=f"{name} crashed: {e}", touched_target=False)
         ctx.decisions.append(_decision_line(step, name, args, thought,
                                             _decision_summary(name, args, ctx, res)))
+        if progress_cb is not None:  # push the just-completed step to the UI now, not at the next step
+            try:
+                progress_cb(step, budget, ctx)
+            except Exception:  # noqa: BLE001
+                pass
         if narrate and res.observation:
             for ln in str(res.observation).splitlines():
                 logger.info("    ↳ %s", ln[:600])
