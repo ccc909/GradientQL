@@ -125,7 +125,13 @@ def coverage_text(ctx: Any) -> Text:
             g, st = _GLYPH[_field_state(ledger.get(f))]
             t.append(g + " ", style=st)
         t.append("\n\n")
-    t.append(". untested   o probed   ? auth-gated\n+ data   x exhausted   ! finding", style="dim")
+    for row in ([("untested", "untested"), ("shallow", "probed"), ("open", "auth-gated")],
+                [("data", "data"), ("dead", "exhausted"), ("finding", "finding")]):
+        for state, label in row:
+            g, st = _GLYPH[state]
+            t.append(g + " ", style=st)
+            t.append(label + "   ", style="dim")
+        t.append("\n")
     return t
 
 
@@ -436,6 +442,8 @@ class DashboardScreen(Screen):
         self._steer_q: queue.Queue = queue.Queue()
         self._resume = resume
         self._run_id: str | None = resume.get("run_id") if resume else None
+        self._last_step_ts = 0.0
+        self._pulse_i = 0
 
     def on_unmount(self) -> None:
         self._alive = False
@@ -466,7 +474,9 @@ class DashboardScreen(Screen):
         with Horizontal(id="dash_body"):
             with VerticalScroll(id="cov_scroll"):
                 yield Static(coverage_text(None), id="coverage")
-            yield RichLog(id="activity", wrap=True, markup=False, highlight=False, max_lines=500)
+            with Vertical(id="activity"):
+                yield RichLog(id="activity_log", wrap=True, markup=False, highlight=False, max_lines=500)
+                yield Static("", id="thinking", markup=False)
             with VerticalScroll(id="loot_scroll"):
                 yield Static(loot_text(None), id="loot")
         yield DataTable(id="findings")
@@ -485,7 +495,23 @@ class DashboardScreen(Screen):
 
     def _log(self, msg: str, style: str) -> None:
         if self._alive:
-            self.query_one("#activity", RichLog).write(Text(msg, style=style))
+            self.query_one("#activity_log", RichLog).write(Text(msg, style=style))
+
+    _DOTS = ("●··", "·●·", "··●", "·●·")
+
+    def _pulse(self) -> None:
+        """Animate a 'thinking' indicator while a step is in flight, so a slow model
+        call (or a long sweep) reads as working, not stuck."""
+        if not self._alive:
+            return
+        idle = time.monotonic() - self._last_step_ts if self._last_step_ts else 0.0
+        thinking = self.query_one("#thinking", Static)
+        if self.app.scan_active and (idle > 0.6 or not self._last_step_ts):
+            self._pulse_i = (self._pulse_i + 1) % len(self._DOTS)
+            model = self.app.settings.get("llm", {}).get("attacker_model", "model")
+            thinking.update(Text(f"  {model} is thinking {self._DOTS[self._pulse_i]}", style=f"bold {GOLD_HI}"))
+        else:
+            thinking.update("")
 
     def on_mount(self) -> None:
         if self._resume is None:  # a resumed run keeps the target action_resume set from the checkpoint
@@ -503,6 +529,7 @@ class DashboardScreen(Screen):
         self._set_header("VERIFYING", "yellow", self.app.target)
         self._start = time.monotonic()
         self.set_interval(1.0, self._tick)
+        self.set_interval(0.35, self._pulse)
         self.run_scan()
 
     @work(thread=True, group="scan")
@@ -571,11 +598,13 @@ class DashboardScreen(Screen):
 
     def _update(self, step: int, budget: int, ctx: Any) -> None:
         self._step, self._budget, self._ctx = step, budget, ctx
+        self._last_step_ts = time.monotonic()
         if not self._alive:
             return
+        self.query_one("#thinking", Static).update("")
         self.query_one("#pbar", ProgressBar).update(progress=(step / budget * 100) if budget else 0)
         self.query_one("#stats", Static).update(self._stats_text())
-        log = self.query_one("#activity", RichLog)
+        log = self.query_one("#activity_log", RichLog)
         for line in ctx.decisions[self._shown:]:
             log.write(_activity_text(str(line)))
         self._shown = len(ctx.decisions)
@@ -652,9 +681,11 @@ class GradientQLApp(App):
     #statbar #stats { width: 1fr; color: $accent; padding-left: 2; }
     #dash_body { height: 1fr; }
     #cov_scroll { width: 33%; padding: 0 1; }
-    #activity { width: 40%; padding: 0 1;
-                background: transparent; scrollbar-size-horizontal: 0; scrollbar-size-vertical: 1;
-                scrollbar-background: $background; scrollbar-color: $primary; }
+    #activity { width: 40%; padding: 0 1; }
+    #activity_log { height: 1fr; background: transparent;
+                    scrollbar-size-horizontal: 0; scrollbar-size-vertical: 1;
+                    scrollbar-background: $background; scrollbar-color: $primary; }
+    #thinking { height: 1; color: $accent; }
     #loot_scroll { width: 27%; padding: 0 1; }
     #coverage { width: auto; height: auto; }
     #loot { width: auto; height: auto; }
