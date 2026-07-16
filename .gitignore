@@ -37,4 +37,3 @@ config/api_key.local
 Thumbs.db
 scripts/generate_comparison_chart.py
 scripts/generate_improvement_chart.py
-scripts/generate_poc_chart.py

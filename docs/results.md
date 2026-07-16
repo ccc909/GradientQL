@@ -89,15 +89,6 @@ commit history). Same DVGA setup, glm-5.2, five runs at a 30-step budget:
 
 <img src="detection_improvement.svg" alt="glm-5.2 detection of SQL injection and JWT bypass on DVGA, before and after" width="460">
 
-The scanner was also run against [poc-graphql](https://github.com/righettod/poc-graphql), a
-graphql-java target with a different schema. glm-5.2, five runs at a 30-step budget:
-
-| Category | Detection |
-|---|---|
-| Authentication bypass / token minting (`auth`) | 5 / 5 |
-| Broken access control (BOLA / IDOR) | 5 / 5 |
-| SQL injection (`dogs.namePrefix`) | 4 / 5 |
-
 ## A larger-budget run
 
 To show how coverage scales with budget, one run per model was performed with a 200-step budget and
