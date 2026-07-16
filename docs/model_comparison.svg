@@ -1,167 +1,170 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 726 454" font-family="ui-monospace, 'Courier New', monospace">
-<rect width="726" height="454" fill="#100e0a"/>
-<rect x="6" y="6" width="714" height="442" fill="none" stroke="#e8a317" stroke-width="2"/>
-<rect x="11" y="11" width="704" height="432" fill="none" stroke="#e8a317" stroke-width="1"/>
-<text x="363" y="42" fill="#ffcf5c" font-size="20" font-weight="bold" text-anchor="middle" letter-spacing="3">DVGA DETECTION BY MODEL</text>
-<text x="363" y="63" fill="#8a7a5c" font-size="11" text-anchor="middle" letter-spacing="1.5">5 RUNS @ BUDGET 30  ::  FILLED SEGMENTS = RUNS (OF 5) THAT FOUND THE CATEGORY</text>
-<text x="316" y="92" fill="#ece0c8" font-size="13.5" font-weight="bold" text-anchor="middle">qwen 3.7-max</text>
-<text x="316" y="109" fill="#e8a317" font-size="11" text-anchor="middle" letter-spacing="1">6.0 / run</text>
-<text x="471" y="92" fill="#ece0c8" font-size="13.5" font-weight="bold" text-anchor="middle">glm-5.2</text>
-<text x="471" y="109" fill="#e8a317" font-size="11" text-anchor="middle" letter-spacing="1">7.4 / run</text>
-<text x="626" y="92" fill="#ece0c8" font-size="13.5" font-weight="bold" text-anchor="middle">gpt-oss-120b</text>
-<text x="626" y="109" fill="#e8a317" font-size="11" text-anchor="middle" letter-spacing="1">4.8 / run</text>
-<line x1="393" y1="114" x2="393" y2="410" stroke="#2a2213" stroke-width="1"/>
-<line x1="549" y1="114" x2="549" y2="410" stroke="#2a2213" stroke-width="1"/>
-<text x="222" y="144" fill="#ece0c8" font-size="12" text-anchor="end">OS COMMAND INJECTION</text>
-<rect x="252" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="294" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="315" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="336" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="361" y="144" fill="#ffcf5c" font-size="12">1</text>
-<rect x="408" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="450" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="471" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="492" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="516" y="144" fill="#ffcf5c" font-size="12">5</text>
-<rect x="563" y="132" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="584" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="605" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="626" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="647" y="132" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="672" y="144" fill="#ffcf5c" font-size="12">1</text>
-<text x="222" y="180" fill="#ece0c8" font-size="12" text-anchor="end">BROKEN ACCESS (BOLA/BFLA)</text>
-<rect x="252" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="294" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="315" y="168" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="336" y="168" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="361" y="180" fill="#ffcf5c" font-size="12">3</text>
-<rect x="408" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="450" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="471" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="492" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="516" y="180" fill="#ffcf5c" font-size="12">5</text>
-<rect x="563" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="584" y="168" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="605" y="168" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="626" y="168" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="647" y="168" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="672" y="180" fill="#ffcf5c" font-size="12">2</text>
-<text x="222" y="216" fill="#ece0c8" font-size="12" text-anchor="end">BLIND SSRF (OOB)</text>
-<rect x="252" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="294" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="315" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="336" y="204" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="361" y="216" fill="#ffcf5c" font-size="12">4</text>
-<rect x="408" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="450" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="471" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="492" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="516" y="216" fill="#ffcf5c" font-size="12">5</text>
-<rect x="563" y="204" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="584" y="204" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="605" y="204" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="626" y="204" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="647" y="204" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="672" y="216" fill="#ffcf5c" font-size="12">1</text>
-<text x="222" y="252" fill="#ece0c8" font-size="12" text-anchor="end">SQL INJECTION</text>
-<rect x="252" y="240" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="294" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="315" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="336" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="361" y="252" fill="#ffcf5c" font-size="12">1</text>
-<rect x="408" y="240" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="450" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="471" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="492" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="516" y="252" fill="#ffcf5c" font-size="12">1</text>
-<rect x="563" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="584" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="605" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="626" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="647" y="240" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="672" y="252" fill="#8a7a5c" font-size="12">0</text>
-<text x="222" y="288" fill="#ece0c8" font-size="12" text-anchor="end">JWT / AUTH BYPASS</text>
-<rect x="252" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="273" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="294" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="315" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="336" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="361" y="288" fill="#8a7a5c" font-size="12">0</text>
-<rect x="408" y="276" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="450" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="471" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="492" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="516" y="288" fill="#ffcf5c" font-size="12">1</text>
-<rect x="563" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="584" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="605" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="626" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="647" y="276" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="672" y="288" fill="#8a7a5c" font-size="12">0</text>
-<text x="222" y="324" fill="#ece0c8" font-size="12" text-anchor="end">STACK-TRACE LEAK</text>
-<rect x="252" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="294" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="315" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="336" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="361" y="324" fill="#ffcf5c" font-size="12">5</text>
-<rect x="408" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="450" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="471" y="312" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<rect x="492" y="312" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
-<text x="516" y="324" fill="#ffcf5c" font-size="12">3</text>
-<rect x="563" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="584" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="605" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="626" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="647" y="312" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="672" y="324" fill="#ffcf5c" font-size="12">5</text>
-<text x="222" y="360" fill="#ece0c8" font-size="12" text-anchor="end">BATCH-QUERY DOS</text>
-<rect x="252" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="294" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="315" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="336" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="361" y="360" fill="#ffcf5c" font-size="12">5</text>
-<rect x="408" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="450" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="471" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="492" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="516" y="360" fill="#ffcf5c" font-size="12">5</text>
-<rect x="563" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="584" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="605" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="626" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="647" y="348" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="672" y="360" fill="#ffcf5c" font-size="12">5</text>
-<text x="222" y="396" fill="#ece0c8" font-size="12" text-anchor="end">INTROSPECTION</text>
-<rect x="252" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="273" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="294" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="315" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="336" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="361" y="396" fill="#ffcf5c" font-size="12">5</text>
-<rect x="408" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="429" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="450" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="471" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="492" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="516" y="396" fill="#ffcf5c" font-size="12">5</text>
-<rect x="563" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="584" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="605" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="626" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<rect x="647" y="384" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
-<text x="672" y="396" fill="#ffcf5c" font-size="12">5</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 726 482" font-family="'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif">
+<rect width="726" height="482" fill="#100e0a"/>
+<rect x="6" y="6" width="714" height="470" fill="none" stroke="#e8a317" stroke-width="2"/>
+<rect x="11" y="11" width="704" height="460" fill="none" stroke="#e8a317" stroke-width="1"/>
+<text x="363" y="43" fill="#ffcf5c" font-size="21" font-weight="700" text-anchor="middle" letter-spacing="1">DVGA detection by model</text>
+<text x="363" y="64" fill="#8a7a5c" font-size="12" text-anchor="middle">5 runs @ budget 30  ·  filled segments = runs (of 5) that found the category</text>
+<text x="316" y="98" fill="#ece0c8" font-size="14.5" font-weight="700" text-anchor="middle">qwen 3.7-max</text>
+<text x="316" y="119" fill="#e8a317" font-size="12.5" font-weight="600" text-anchor="middle">6.0 findings / run</text>
+<text x="316" y="136" fill="#8a7a5c" font-size="11.5" text-anchor="middle">236k tokens / run</text>
+<text x="471" y="98" fill="#ece0c8" font-size="14.5" font-weight="700" text-anchor="middle">glm-5.2</text>
+<text x="471" y="119" fill="#e8a317" font-size="12.5" font-weight="600" text-anchor="middle">7.4 findings / run</text>
+<text x="471" y="136" fill="#8a7a5c" font-size="11.5" text-anchor="middle">242k tokens / run</text>
+<text x="626" y="98" fill="#ece0c8" font-size="14.5" font-weight="700" text-anchor="middle">gpt-oss-120b</text>
+<text x="626" y="119" fill="#e8a317" font-size="12.5" font-weight="600" text-anchor="middle">4.8 findings / run</text>
+<text x="626" y="136" fill="#8a7a5c" font-size="11.5" text-anchor="middle">232k tokens / run</text>
+<line x1="393" y1="142" x2="393" y2="438" stroke="#2a2213" stroke-width="1"/>
+<line x1="549" y1="142" x2="549" y2="438" stroke="#2a2213" stroke-width="1"/>
+<text x="222" y="172" fill="#ece0c8" font-size="12" text-anchor="end">OS COMMAND INJECTION</text>
+<rect x="252" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="294" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="315" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="336" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="361" y="172" fill="#ffcf5c" font-size="12">1</text>
+<rect x="408" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="450" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="471" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="492" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="516" y="172" fill="#ffcf5c" font-size="12">5</text>
+<rect x="563" y="160" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="584" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="605" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="626" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="647" y="160" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="672" y="172" fill="#ffcf5c" font-size="12">1</text>
+<text x="222" y="208" fill="#ece0c8" font-size="12" text-anchor="end">BROKEN ACCESS (BOLA/BFLA)</text>
+<rect x="252" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="294" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="315" y="196" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="336" y="196" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="361" y="208" fill="#ffcf5c" font-size="12">3</text>
+<rect x="408" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="450" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="471" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="492" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="516" y="208" fill="#ffcf5c" font-size="12">5</text>
+<rect x="563" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="584" y="196" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="605" y="196" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="626" y="196" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="647" y="196" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="672" y="208" fill="#ffcf5c" font-size="12">2</text>
+<text x="222" y="244" fill="#ece0c8" font-size="12" text-anchor="end">BLIND SSRF (OOB)</text>
+<rect x="252" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="294" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="315" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="336" y="232" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="361" y="244" fill="#ffcf5c" font-size="12">4</text>
+<rect x="408" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="450" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="471" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="492" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="516" y="244" fill="#ffcf5c" font-size="12">5</text>
+<rect x="563" y="232" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="584" y="232" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="605" y="232" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="626" y="232" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="647" y="232" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="672" y="244" fill="#ffcf5c" font-size="12">1</text>
+<text x="222" y="280" fill="#ece0c8" font-size="12" text-anchor="end">SQL INJECTION</text>
+<rect x="252" y="268" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="294" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="315" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="336" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="361" y="280" fill="#ffcf5c" font-size="12">1</text>
+<rect x="408" y="268" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="450" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="471" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="492" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="516" y="280" fill="#ffcf5c" font-size="12">1</text>
+<rect x="563" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="584" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="605" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="626" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="647" y="268" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="672" y="280" fill="#8a7a5c" font-size="12">0</text>
+<text x="222" y="316" fill="#ece0c8" font-size="12" text-anchor="end">JWT / AUTH BYPASS</text>
+<rect x="252" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="273" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="294" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="315" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="336" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="361" y="316" fill="#8a7a5c" font-size="12">0</text>
+<rect x="408" y="304" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="450" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="471" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="492" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="516" y="316" fill="#ffcf5c" font-size="12">1</text>
+<rect x="563" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="584" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="605" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="626" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="647" y="304" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="672" y="316" fill="#8a7a5c" font-size="12">0</text>
+<text x="222" y="352" fill="#ece0c8" font-size="12" text-anchor="end">STACK-TRACE LEAK</text>
+<rect x="252" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="294" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="315" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="336" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="361" y="352" fill="#ffcf5c" font-size="12">5</text>
+<rect x="408" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="450" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="471" y="340" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<rect x="492" y="340" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="516" y="352" fill="#ffcf5c" font-size="12">3</text>
+<rect x="563" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="584" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="605" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="626" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="647" y="340" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="672" y="352" fill="#ffcf5c" font-size="12">5</text>
+<text x="222" y="388" fill="#ece0c8" font-size="12" text-anchor="end">BATCH-QUERY DOS</text>
+<rect x="252" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="294" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="315" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="336" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="361" y="388" fill="#ffcf5c" font-size="12">5</text>
+<rect x="408" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="450" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="471" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="492" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="516" y="388" fill="#ffcf5c" font-size="12">5</text>
+<rect x="563" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="584" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="605" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="626" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="647" y="376" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="672" y="388" fill="#ffcf5c" font-size="12">5</text>
+<text x="222" y="424" fill="#ece0c8" font-size="12" text-anchor="end">INTROSPECTION</text>
+<rect x="252" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="273" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="294" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="315" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="336" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="361" y="424" fill="#ffcf5c" font-size="12">5</text>
+<rect x="408" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="429" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="450" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="471" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="492" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="516" y="424" fill="#ffcf5c" font-size="12">5</text>
+<rect x="563" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="584" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="605" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="626" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="647" y="412" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="672" y="424" fill="#ffcf5c" font-size="12">5</text>
 </svg>

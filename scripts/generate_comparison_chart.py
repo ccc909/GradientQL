@@ -18,8 +18,10 @@ MUTED = "#8a7a5c"
 EMPTY_F = "#1c160e"   # empty segment fill
 EMPTY_S = "#4a3c22"   # empty segment outline
 SEP = "#2a2213"       # column separator
+FONT = "'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif"
 
-MODELS = [("qwen 3.7-max", "6.0"), ("glm-5.2", "7.4"), ("gpt-oss-120b", "4.8")]
+# name, mean findings/run, mean tokens/run
+MODELS = [("qwen 3.7-max", "6.0", "236k"), ("glm-5.2", "7.4", "242k"), ("gpt-oss-120b", "4.8", "232k")]
 # category, [qwen, glm, gpt-oss] detections out of 5; hardest (most discriminating) first
 CATS = [
     ("OS COMMAND INJECTION", [1, 5, 1]),
@@ -35,7 +37,7 @@ CATS = [
 W = 726
 LABEL_R = 238
 PAD_R = 22
-PAD_T = 122
+PAD_T = 150
 PAD_B = 44
 ROW_H = 36
 SQ = 17
@@ -56,23 +58,24 @@ def gauge_x(m: int) -> float:
 
 def main() -> None:
     s: list[str] = []
-    s.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
-             f'font-family="ui-monospace, \'Courier New\', monospace">')
+    s.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" font-family="{FONT}">')
     s.append(f'<rect width="{W}" height="{H}" fill="{BG}"/>')
     s.append(f'<rect x="6" y="6" width="{W - 12}" height="{H - 12}" fill="none" stroke="{GOLD}" stroke-width="2"/>')
     s.append(f'<rect x="11" y="11" width="{W - 22}" height="{H - 22}" fill="none" stroke="{GOLD}" stroke-width="1"/>')
-    s.append(f'<text x="{W / 2:.0f}" y="42" fill="{GOLD_HI}" font-size="20" font-weight="bold" '
-             f'text-anchor="middle" letter-spacing="3">DVGA DETECTION BY MODEL</text>')
-    s.append(f'<text x="{W / 2:.0f}" y="63" fill="{MUTED}" font-size="11" text-anchor="middle" '
-             f'letter-spacing="1.5">5 RUNS @ BUDGET 30  ::  FILLED SEGMENTS = RUNS (OF 5) THAT FOUND THE CATEGORY</text>')
+    s.append(f'<text x="{W / 2:.0f}" y="43" fill="{GOLD_HI}" font-size="21" font-weight="700" '
+             f'text-anchor="middle" letter-spacing="1">DVGA detection by model</text>')
+    s.append(f'<text x="{W / 2:.0f}" y="64" fill="{MUTED}" font-size="12" text-anchor="middle">'
+             f'5 runs @ budget 30  ·  filled segments = runs (of 5) that found the category</text>')
     grid_bottom = PAD_T + len(CATS) * ROW_H
-    # column headers
-    for m, (name, mean) in enumerate(MODELS):
+    # column headers: model name, mean findings/run, mean tokens/run
+    for m, (name, mean, tok) in enumerate(MODELS):
         cx = col_x(m) + COL_W / 2
-        s.append(f'<text x="{cx:.0f}" y="92" fill="{TEXT}" font-size="13.5" font-weight="bold" '
+        s.append(f'<text x="{cx:.0f}" y="98" fill="{TEXT}" font-size="14.5" font-weight="700" '
                  f'text-anchor="middle">{name}</text>')
-        s.append(f'<text x="{cx:.0f}" y="109" fill="{GOLD}" font-size="11" text-anchor="middle" '
-                 f'letter-spacing="1">{mean} / run</text>')
+        s.append(f'<text x="{cx:.0f}" y="119" fill="{GOLD}" font-size="12.5" font-weight="600" '
+                 f'text-anchor="middle">{mean} findings / run</text>')
+        s.append(f'<text x="{cx:.0f}" y="136" fill="{MUTED}" font-size="11.5" text-anchor="middle">'
+                 f'{tok} tokens / run</text>')
     # column separators
     for m in range(1, len(MODELS)):
         lx = col_x(m)
