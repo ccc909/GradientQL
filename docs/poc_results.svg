@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 432 198" font-family="'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif">
+<rect width="432" height="198" fill="#100e0a"/>
+<rect x="6" y="6" width="420" height="186" fill="none" stroke="#e8a317" stroke-width="2"/>
+<rect x="11" y="11" width="410" height="176" fill="none" stroke="#e8a317" stroke-width="1"/>
+<text x="228" y="40" fill="#ece0c8" font-size="13.5" font-weight="700" text-anchor="end">poc-graphql</text>
+<text x="266" y="40" fill="#8a7a5c" font-size="11.5">glm-5.2 &#183; 5 runs &#183; 30 steps</text>
+<text x="228" y="76" fill="#ece0c8" font-size="12" text-anchor="end">AUTHENTICATION BYPASS</text>
+<rect x="266" y="64" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="286" y="64" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="308" y="64" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="328" y="64" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="350" y="64" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="374" y="76" fill="#ffcf5c" font-size="12">5</text>
+<text x="228" y="116" fill="#ece0c8" font-size="12" text-anchor="end">BROKEN ACCESS (BOLA/BFLA)</text>
+<rect x="266" y="104" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="286" y="104" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="308" y="104" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="328" y="104" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="350" y="104" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<text x="374" y="116" fill="#ffcf5c" font-size="12">5</text>
+<text x="228" y="156" fill="#ece0c8" font-size="12" text-anchor="end">SQL INJECTION</text>
+<rect x="266" y="144" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="286" y="144" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="308" y="144" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="328" y="144" width="17" height="17" fill="#e8a317" stroke="#100e0a" stroke-width="1"/>
+<rect x="350" y="144" width="17" height="17" fill="#1c160e" stroke="#4a3c22" stroke-width="1"/>
+<text x="374" y="156" fill="#ffcf5c" font-size="12">4</text>
+</svg>

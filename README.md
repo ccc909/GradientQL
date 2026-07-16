@@ -196,13 +196,11 @@ strongest and the fast, cheap `openai/gpt-oss-120b` is shallowest.
 
 <img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="720">
 
-Two categories glm often missed, SQL injection and JWT auth bypass, went from 1/5 to 4/5 after later
-changes to the scanner. The same scanner, run against
-[poc-graphql](https://github.com/righettod/poc-graphql), a graphql-java target with a different schema,
-detected that target's authentication bypass and broken access control in every run and its SQL
-injection in four of five.
+The same scanner was also run against [poc-graphql](https://github.com/righettod/poc-graphql), a
+graphql-java target with a different schema. glm-5.2 detected its authentication bypass and broken
+access control in every run, and its SQL injection in four of five.
 
-<img src="docs/detection_improvement.svg" alt="glm-5.2 detection of SQL injection and JWT bypass on DVGA, before and after" width="460">
+<img src="docs/poc_results.svg" alt="poc-graphql detection rate by category, glm-5.2, five runs at a 30-step budget" width="430">
 
 Runs are non-deterministic, so these are averages over five runs per model. The full methodology,
 per-category tables, token usage, and a larger-budget run are in [docs/results.md](docs/results.md).
