@@ -19,27 +19,6 @@ brute-forcing, and denial of service.
   </tr>
 </table>
 
-I started this about a year ago. The original plan was to buy a stack of Radeon MI50 GPUs and
-fine-tune a model locally for GraphQL query generation, but that fell through. When Claude Opus 4.6
-came out I revived the idea with cloud models instead. I was short on time, so I built almost all of
-it with an LLM, while still working on something I find interesting: automated vulnerability
-hunting.
-
-The first version was an implementation of the PrediQL paper (arXiv:2510.10407). Out of curiosity I
-replaced its control loop with a fully agentic one, and the results were interesting enough to keep
-going. Early on I pointed it at a production GraphQL API inside a vulnerability disclosure program.
-On an innocuous-looking query the model noticed a database error in the response and flagged it,
-which turned into a blind SQL injection with real impact. It was reported through the program and
-fixed.
-
-## Scope and safety
-
-Please note: this tool sends real attack traffic and has no built-in consent check. It targets
-whatever URL you give it. Only run it against systems you are allowed to test: your own deployment,
-a local target like DVGA, or something inside a bug bounty or disclosure scope you hold. Running it
-against someone else's system without permission is likely illegal, and staying in scope is your
-responsibility.
-
 ## Quickstart
 
 **Requirements:** Python 3.10 or newer, an API key for a model on
