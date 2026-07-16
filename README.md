@@ -105,25 +105,26 @@ the final report.
 
 ### A larger-budget run
 
-To illustrate the effect of budget, one additional run was performed with a 200-step budget and the
-`dos` technique enabled; all other parameters were unchanged.
+To show how coverage scales with budget, an additional run was performed with a 200-step budget, the
+`dos` technique enabled, and a stronger model. All other parameters matched the setup above.
 
 | Parameter | Value |
 |---|---|
 | Runs (n) | 1 |
-| Budget | 200 steps (81 used) |
-| Model | `qwen/qwen3.7-max` |
+| Budget | 200 steps (104 used) |
+| Model | `z-ai/glm-5.2` |
 | Attack set | default, plus `dos` enabled |
 
-The run self-terminated after 81 steps, before the budget was exhausted, and produced 10 findings.
-Relative to the 30-step runs it reached two categories the shorter runs did not: arbitrary file write
-/ path traversal (on the `uploadPaste` mutation) and an aliases-based denial of service (unbounded
-query cost). It also confirmed blind SSRF from three separate vectors and broken object-level
-authorization on multiple fields. Distinct DVGA vulnerabilities detected: introspection, batch
-queries, server-side request forgery, and arbitrary file write / path traversal.
+The run self-terminated after 104 steps, used about 1.2 million tokens, and produced 15 findings
+spanning nine distinct DVGA categories: GraphQL introspection, batch-query and unbounded-cost denial
+of service, OS command injection on two endpoints, SQL injection on two parameters, a forged admin
+JWT via a weak signing secret, blind out-of-band SSRF, a broken-access-control cluster across five
+fields (unauthenticated `deleteAllPastes`, cross-user read, edit, and delete of private pastes, and
+`users`), and sensitive information disclosure through the audit log. Relative to the 30-step runs it
+reached JWT forgery and the systematic access-control cluster that the shorter budget did not.
 
-This is a single, non-deterministic run, included to show that additional budget translates into
-deeper coverage rather than to establish a rate.
+This is a single, non-deterministic run, included to show that a larger budget and a stronger model
+translate into deeper coverage rather than to establish a rate.
 
 ## Requirements
 
