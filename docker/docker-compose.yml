@@ -1,0 +1,33 @@
+# Bring up a monkey-patched DVGA and scan it in one command.
+#
+#   OPENROUTER_API_KEY=sk-... docker compose -f docker/docker-compose.yml up --build
+#
+# `dvga` starts the vulnerable target; `scanner` waits for it to be healthy, runs one scan against
+# it, prints the report, and exits. Findings/traces land in ./output on the host.
+services:
+  dvga:
+    build:
+      context: ..
+      dockerfile: docker/dvga.Dockerfile
+    image: gradientql-dvga
+    ports:
+      - "5013:5013"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:5013/graphql', data=json.dumps({'query':'{__typename}'}).encode(), headers={'Content-Type':'application/json'}), timeout=5)"]
+      interval: 5s
+      timeout: 6s
+      retries: 12
+
+  scanner:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: gradientql
+    depends_on:
+      dvga:
+        condition: service_healthy
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in your shell}
+    volumes:
+      - ../output:/app/output
+    command: ["--url", "http://dvga:5013/graphql", "--no-tui"]

@@ -1,0 +1,17 @@
+# Keep the build context (and the image) lean, and never ship a key.
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+output/
+docs/
+tests/
+scripts/
+config/api_key.local
+*.md
+!README.md

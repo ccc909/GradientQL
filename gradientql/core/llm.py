@@ -161,7 +161,9 @@ def _get_base_llm(settings: dict[str, Any], model_key: str, default_model: str,
         max_retries=llm_cfg.get("max_retries", 2),
         **extra_kwargs,
     )
-    response_format = llm_cfg.get("response_format", {"type": "json_object"})
+    # Default off: forcing json_object makes some models (e.g. glm-5.2) loop to the token cap, and
+    # the action parser reads JSON from free text anyway. Opt in via llm.response_format if needed.
+    response_format = llm_cfg.get("response_format", None)
     if response_format:
         if not isinstance(response_format, dict):
             response_format = {"type": "json_object"}

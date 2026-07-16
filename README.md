@@ -140,6 +140,16 @@ Clone the repository and install it in editable mode:
 pip install -e ".[dev]"
 ```
 
+## Docker
+
+Images for the scanner and a patched DVGA target are provided, with a one-command Compose setup that
+brings up DVGA and scans it. Full instructions are in [docs/docker.md](docs/docker.md); the short
+version:
+
+```
+OPENROUTER_API_KEY=sk-... docker compose -f docker/docker-compose.yml up --build
+```
+
 ## Setting the model key
 
 The scanner looks for the model API key in three places and uses the first one it finds:
