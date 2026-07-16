@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 _HIGH_VALUE_CLASSES: list[tuple[str, int, tuple[str, ...]]] = [
@@ -89,6 +90,60 @@ def critical_untested(schema_map: dict[str, Any], ledger: dict[str, dict]) -> li
         if info["rank"] == CRITICAL_RANK:
             out += [f for f in info["fields"] if not _attacked(ledger.get(f))]
     return out
+
+
+_NON_INJECTABLE = {"Int", "Float", "Boolean"}
+_TOKEN_ARG_HINTS = ("token", "jwt", "auth", "session", "bearer")
+
+
+def _arg_scalar(type_ref: Any) -> str:
+    return re.sub(r"[\[\]!]", "", str(type_ref or "")).strip()
+
+
+def unfuzzed_string_args(schema_map: dict[str, Any], fuzz_seen: dict, cap: int = 6) -> list[str]:
+    """Root Query fields with a string arg that has not had the sqli ladder yet.
+
+    List-returning fields come first: a filter/search arg on a normal-looking list read
+    is a classic SQLi sink that gets skipped because the field 'works' on a plain read.
+    """
+    qroot = schema_map.get("_query_type", "Query")
+    fields = schema_map.get(qroot) or {}
+    enums = schema_map.get("_enum_types") or {}
+    listy: list[str] = []
+    other: list[str] = []
+    for field, info in fields.items():
+        if str(field).startswith("_") or not isinstance(info, dict):
+            continue
+        is_list = "[" in str(info.get("return_type", ""))
+        for a in info.get("args") or []:
+            base = _arg_scalar(a.get("type"))
+            if not base or base in _NON_INJECTABLE or base in enums:
+                continue
+            arg = str(a.get("name", ""))
+            if not arg or fuzz_seen.get((field, arg, "", "sqli"), 0):
+                continue
+            (listy if is_list else other).append(f"{field}({arg})")
+    return (listy + other)[:cap]
+
+
+def token_arg_fields(schema_map: dict[str, Any], cap: int = 4) -> list[str]:
+    """Query/Mutation fields whose argument is a JWT/token sink read from the field itself.
+
+    e.g. me(token:) - a server that reads the JWT from a field argument rather than the
+    Authorization header, so a forged/captured token must be passed INTO the field.
+    """
+    out: list[str] = []
+    for r in (schema_map.get("_query_type", "Query"), schema_map.get("_mutation_type", "Mutation")):
+        fields = schema_map.get(r)
+        if not isinstance(fields, dict):
+            continue
+        for field, info in fields.items():
+            if str(field).startswith("_") or not isinstance(info, dict):
+                continue
+            for a in info.get("args") or []:
+                if any(h in str(a.get("name", "")).lower() for h in _TOKEN_ARG_HINTS):
+                    out.append(f"{field}({a.get('name')})")
+    return out[:cap]
 
 
 def render_high_value(schema_map: dict[str, Any], ledger: dict[str, dict] | None = None,

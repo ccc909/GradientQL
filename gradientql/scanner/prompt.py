@@ -49,6 +49,12 @@ back the name you just submitted is a normal CRUD echo, NOT an eval vector - don
 `fuzz` fires a payload battery at one arg in a single turn and confirms eval/error/reflection/diff.
 Cover engines - SSTI {{{{7*7}}}} (Jinja), #{{7*7}} (Ruby!), <%= 7*7 %> (ERB), ${{7*7}}; command inj ;id /
 $(id); SQLi '; traversal ../../etc/passwd.
+Don't clear injection by field NAME: the obvious "search"-named field is often a sanitized decoy, while a
+boring list query's `filter`/`id`/`title` string arg is the real SQLi sink. A data-returning field isn't
+cleared until its string args have had the sqli ladder - `fuzz` field:'<f>' arg:'<the string arg>' classes:['sqli'].
+NOT SQLi: a UNIQUE / NOT NULL / IntegrityError from a normal write (e.g. registering a duplicate username, or
+a required field) is a DB VALIDATION error, not injection - only report SQL injection when a metacharacter YOU
+sent (', UNION, etc.) caused a SYNTAX error or altered the query result.
 BLIND SSRF - any field whose arg is a url/uri/webhook/callback/redirect/fetch/host (route, urlResolver,
 import-from-url, image-from-url, etc.): a clean/null/error response does NOT clear it - a server-side
 fetch leaves NO trace in the response. The ONLY way to confirm is an out-of-band callback: `fuzz`
@@ -171,7 +177,12 @@ Actions:
 - note: args {{text}} - append to your notes.
 - forge_jwt: args {{approach: "none"|"weak_secret"|"kid", secret?, claims?}} - mint a
   forged JWT (alg:none / weak HMAC secret / kid path-traversal), tampering a harvested
-  token's claims. Returns a token; adopt it with set_identity to test acceptance.
+  token's claims. Returns a token. Test acceptance BOTH ways: (a) adopt it with set_identity
+  (Authorization: Bearer ...); (b) if a field takes a token/jwt/auth arg (e.g. me(token:)),
+  pass the token INTO that field via graphql - some servers read the JWT from a field argument,
+  not the header. Paste the token VERBATIM (an alg:none JWT ends in a trailing '.' - keep it, or
+  you get 'Not enough segments'). No harvested token to tamper? Register an account (createUser/
+  signup) and log in to seed one, or forge blind with claims:{{...}} (identity must match a real username).
 - oob_url: args {{op?: "new"|"check"}} - "new" (default) mints a unique out-of-band callback
   URL; inject it into a url/webhook/redirect/fetch arg. Then call oob_url op:"check" a few
   steps later - if the server fetched it, you get a confirmed BLIND SSRF/XXE finding live.

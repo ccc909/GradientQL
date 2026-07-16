@@ -93,3 +93,41 @@ def test_bfla_sensitive_fields_covers_mint_reset_destruct_vault():
     bfla = coverage.bfla_sensitive_fields(sm)
     assert {"generateCustomerTokenAsAdmin", "resetPassword", "deactivateAccount", "deletePaymentToken"} <= bfla
     assert "cancelOrder" not in bfla                      # order-state is ambiguous -> not auto-recorded
+
+
+# --- injection / token-sink nudges (DVGA SQLi-in-filter and me(token) JWT sinks) ---
+
+def _dvga_like():
+    return {"_query_type": "Query", "_mutation_type": "Mutation", "Mutation": {},
+            "Query": {
+                "pastes": {"args": [{"name": "public", "type": "Boolean"},
+                                    {"name": "limit", "type": "Int"},
+                                    {"name": "filter", "type": "String"}],
+                           "return_type": "[PasteObject]"},
+                "paste": {"args": [{"name": "id", "type": "Int"}, {"name": "title", "type": "String"}],
+                          "return_type": "PasteObject"},
+                "me": {"args": [{"name": "token", "type": "String"}], "return_type": "UserObject"}}}
+
+
+def test_unfuzzed_string_args_leads_with_list_filter_and_skips_scalar_args():
+    sm = _dvga_like()
+    got = coverage.unfuzzed_string_args(sm, {})
+    assert got[0] == "pastes(filter)"                    # list-returning string arg is surfaced first
+    assert "paste(title)" in got                         # scalar-return string arg still listed (after list ones)
+    # Int / Boolean args are not string-injectable and must never appear
+    assert not any(a.endswith(("(id)", "(limit)", "(public)")) for a in got)
+
+
+def test_unfuzzed_string_args_drops_arg_once_sqli_ladder_sent():
+    sm = _dvga_like()
+    seen = {("pastes", "filter", "", "sqli"): 3}         # sqli ladder already sent at pastes.filter
+    assert "pastes(filter)" not in coverage.unfuzzed_string_args(sm, seen)
+
+
+def test_token_arg_fields_finds_me_token_jwt_sink():
+    sm = _dvga_like()
+    assert coverage.token_arg_fields(sm) == ["me(token)"]
+    # a schema with no token-taking field yields nothing
+    plain = {"_query_type": "Query", "_mutation_type": "Mutation", "Mutation": {},
+             "Query": {"products": {"args": [{"name": "q", "type": "String"}], "return_type": "[Product]"}}}
+    assert coverage.token_arg_fields(plain) == []

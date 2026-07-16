@@ -73,6 +73,21 @@ def test_injection_sql_error_fingerprint():
     assert vt and "SQL Injection" in vt
 
 
+def test_sql_unique_constraint_error_is_not_injection():
+    # a UNIQUE/IntegrityError from a normal write (registering a duplicate username) is a DB
+    # validation error, not injection - the bare engine name must not trip the SQLi fingerprint
+    resp = {"errors": [{"message": "(sqlite3.IntegrityError) UNIQUE constraint failed: users.username"}]}
+    vt, _ = senses.detect_injection_surface("mutation{createUser}", resp)
+    assert vt is None
+
+
+def test_sql_syntax_error_still_flags_despite_engine_name():
+    # a real metacharacter-induced syntax error is still SQLi even though it also names the engine
+    resp = {"errors": [{"message": "(sqlite3.OperationalError) near \"'\": syntax error"}]}
+    vt, _ = senses.detect_injection_surface("query{pastes(filter)}", resp)
+    assert vt and "SQL Injection" in vt
+
+
 def test_injection_introspection_response_is_not_scanned():
     # a schema dump whose field names contain "ldap"/"xpath" must NOT false-positive
     resp = {"data": {"__schema": {"types": [{"name": "ldapAdminRoleLinks"},

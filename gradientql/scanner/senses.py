@@ -114,6 +114,18 @@ _SQL_ERROR_MARKERS = (
     "psycopg2", "near \"", "mysql_fetch", "ora-0", "sqlstate", "operationalerror",
     "incorrect syntax near", "warning: pg_", "quoted string not properly terminated",
 )
+# A bare engine name (sqlite3./psycopg2/operationalerror) also appears in benign constraint
+# errors from a NORMAL write (e.g. registering a duplicate username) - not injection. Only call
+# it SQLi when a real injection tell is present, or when no constraint error explains the engine error.
+_SQL_BENIGN_MARKERS = (
+    "integrityerror", "unique constraint", "not null constraint", "foreign key constraint",
+    "check constraint", "constraint failed", "duplicate entry", "duplicate key",
+)
+_SQL_STRONG_MARKERS = (
+    "sql syntax", "syntax error", "unrecognized token", "near \"", "incorrect syntax near",
+    "quoted string not properly terminated", "unterminated", "unclosed quotation",
+    "you have an error in your sql",
+)
 _NOSQL_ERROR_MARKERS = (
     "mongoerror", "mongoservererror", "bsonerror", "cast to objectid failed", "e11000",
     "unknown operator", "couchbase", "n1ql", "topology was destroyed",
@@ -153,8 +165,13 @@ def detect_injection_surface(query: str, response: dict) -> tuple[str | None, st
                     f"template_evaluated: {expr} -> {marker} in response data")
 
     low = (data_text + " " + err_text).lower()
+    if any(m in low for m in _SQL_ERROR_MARKERS):
+        benign = any(b in low for b in _SQL_BENIGN_MARKERS)
+        strong = any(s in low for s in _SQL_STRONG_MARKERS)
+        if strong or not benign:
+            marker = next(m for m in _SQL_ERROR_MARKERS if m in low)
+            return ("SQL Injection (error-based)", f"sql_error_in_response: {marker!r}")
     for label, markers in (
-        ("SQL Injection (error-based)", _SQL_ERROR_MARKERS),
         ("NoSQL Injection (error-based)", _NOSQL_ERROR_MARKERS),
         ("XPath Injection (error-based)", _XPATH_ERROR_MARKERS),
         ("LDAP Injection (error-based)", _LDAP_ERROR_MARKERS),

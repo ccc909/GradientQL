@@ -43,6 +43,39 @@ def test_new_attack_toggles_gate_dispatch():
     assert dispatch("auth_test", bola_off, {}).blocked
 
 
+# --- forge_jwt auto-test against token-arg sinks --------------------------- #
+
+_JWT_SM = {"_query_type": "Query", "_mutation_type": "Mutation", "Mutation": {},
+           "Query": {"me": {"args": [{"name": "token", "type": "String"}],
+                            "return_type": "User", "description": ""}},
+           "User": {"id": {"args": [], "return_type": "Int", "description": ""}}}
+
+
+def test_forge_jwt_autotests_token_field_and_records_bypass():
+    # forged token is submitted INTO me(token:) by the tool; a data response == accepted == bypass
+    client = MockClient(default={"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200})
+    ctx = make_ctx(client, schema_map=_JWT_SM)
+    res = dispatch("forge_jwt", ctx, {"approach": "none"})
+    assert res.touched_target
+    assert any("Auth Bypass" in v["vuln_type"] and "me(token)" in v["target_node"] for v in ctx.vulns)
+    assert "ACCEPTED" in res.observation
+
+
+def test_forge_jwt_autotest_rejected_token_records_nothing():
+    client = MockClient(default={"data": {"me": None},
+                                 "errors": [{"message": "Not enough segments"}], "_status_code": 200})
+    ctx = make_ctx(client, schema_map=_JWT_SM)
+    dispatch("forge_jwt", ctx, {"approach": "none"})
+    assert not any("Auth Bypass" in v["vuln_type"] for v in ctx.vulns)
+
+
+def test_forge_jwt_no_token_field_points_at_header():
+    ctx = make_ctx(schema_map={"_query_type": "Query", "Query": {"x": {"args": [], "return_type": "Int"}}})
+    res = dispatch("forge_jwt", ctx, {"approach": "none"})
+    assert not ctx.vulns
+    assert "set_identity" in res.observation
+
+
 # --- graphql --------------------------------------------------------------- #
 
 def test_graphql_records_detector_finding():

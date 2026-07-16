@@ -24,7 +24,12 @@ from .memory import (
     primary_root_field,
     unconfirmed_classes,
 )
-from .coverage import critical_untested, untested_high_value_fields
+from .coverage import (
+    critical_untested,
+    token_arg_fields,
+    unfuzzed_string_args,
+    untested_high_value_fields,
+)
 from .prompt import build_prompt, extract_action
 from .schema import (
     _SEMANTIC_INDEX_MIN_FIELDS,
@@ -311,6 +316,23 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             unused_tools = [t for t in _ENDPOINT_TOOLS if t not in techniques_used]
             if unused_tools and (budget - step) > 2:
                 nudge.append(f"(reminder) endpoint-level tools not yet run: {', '.join(unused_tools)}")
+            sqli_args = unfuzzed_string_args(schema_map, ctx._fuzz_seen)
+            if sqli_args and (budget - step) > 2:
+                nudge.append("(reminder) string args NOT yet SQLi-fuzzed - a filter/search/id/title arg on a "
+                             "data-returning query is a classic SQLi sink even when the field 'works' on a "
+                             "normal read; don't clear it by the field NAME. fuzz classes:['sqli']: "
+                             + ", ".join(sqli_args))
+            tok_fields = token_arg_fields(schema_map)
+            if tok_fields and (budget - step) > 2:
+                have_tok = bool(ctx.harvested.get("forged_jwt") or ctx.harvested.get("jwt"))
+                verbatim = (" You already have a forged/captured token - paste it VERBATIM into the field arg "
+                            "(an alg:none JWT ends in a trailing '.', keep it; dropping a segment gives "
+                            "'Not enough segments')." if have_tok else "")
+                nudge.append("(reminder) field(s) taking a token/jwt arg: " + ", ".join(tok_fields)
+                             + " - a JWT can be read from a FIELD ARGUMENT, not just the Authorization "
+                             "header. Pass a captured/forged token INTO the field via graphql (forge_jwt "
+                             "approach:'none' if you have none; register an account to seed a token if login fails)."
+                             + verbatim)
         fixation = "  ".join(nudge)
 
         prompt = build_prompt({
