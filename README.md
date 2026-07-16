@@ -44,64 +44,66 @@ The scanner was evaluated against the
 [Damn Vulnerable GraphQL Application](https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application)
 (DVGA), a standard intentionally-vulnerable GraphQL target.
 
-**Setup.** Five independent runs (n = 5) were performed. Each run introspected a freshly restarted
-DVGA instance and executed under a per-run budget of 30 steps (one model call and at most one request
-per step), driven by the `qwen/qwen3.7-max` model with the default attack configuration. Every
-finding was mapped to DVGA's published set of 21 named vulnerabilities and aggregated across the five
-runs. The model makes every decision, so runs are non-deterministic and differ from one another.
+**Setup.** Two models were each run five times (n = 5 per model). Every run introspected a freshly
+restarted DVGA instance and executed under a per-run budget of 30 steps (one model call and at most
+one request per step) with the default attack configuration. Every finding was mapped to DVGA's
+published set of 21 named vulnerabilities and aggregated across the five runs. The model makes every
+decision, so runs are non-deterministic and differ from one another.
 
 | Parameter | Value |
 |---|---|
 | Target | DVGA (fresh instance per run) |
-| Runs (n) | 5 |
+| Runs (n) | 5 per model |
 | Budget per run | 30 steps |
-| Model | `qwen/qwen3.7-max` |
+| Models | `qwen/qwen3.7-max`, `z-ai/glm-5.2` |
 | Attack set | default (destructive `dos` off) |
 
-**Results.** The five runs produced 6, 4, 7, 6, and 7 findings (mean 6.0 per run; mean 4.2 distinct
-DVGA categories per run).
+**Results.** `qwen/qwen3.7-max` produced 6, 4, 7, 6, and 7 findings (mean 6.0 per run); `z-ai/glm-5.2`
+produced 7, 8, 8, 8, and 6 (mean 7.4 per run). The two cover the easy categories equally but diverge
+on the multi-step authentication chains, where glm is markedly stronger.
+
+<p align="center"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category, qwen vs glm" width="700"></p>
 
 DVGA lists 21 named vulnerabilities (OS command injection is counted as two variants). Three of them
-(stored XSS, HTML injection, log injection) require a browser or access to the server logs to confirm
-and are outside the reach of a black-box HTTP scanner. The remaining set, with the number of runs
-(out of five) in which each was detected:
+(stored XSS, HTML injection, log injection) require a browser or access to the server logs and are
+outside the reach of a black-box HTTP scanner. For the rest, the number of runs (out of five) in which
+each model detected the category:
 
-| Category | Vulnerability | Detected in |
+| Category | qwen/qwen3.7-max | z-ai/glm-5.2 |
 |---|---|---|
-| Information Disclosure | GraphQL Introspection | 5 / 5 |
-| Information Disclosure | Stack trace / error leakage | 5 / 5 |
-| Information Disclosure | Server-Side Request Forgery (blind, out-of-band) | 4 / 5 |
-| Information Disclosure | GraphiQL interface, field suggestions | 0 / 5 |
-| Denial of Service | Batch Query Attack | 5 / 5 |
-| Denial of Service | Deep recursion, resource-intensive, field duplication, aliases | not exercised |
-| Code Execution | OS Command Injection | 1 / 5 |
-| Injection | SQL Injection | 1 / 5 |
-| Authorization Bypass | JWT forge, interface-protection bypass, deny-list bypass | 0 / 5 |
-| Miscellaneous | Weak-password brute force, arbitrary file write / path traversal | 0 / 5 |
+| GraphQL introspection | 5 / 5 | 5 / 5 |
+| Batch-query denial of service | 5 / 5 | 5 / 5 |
+| Blind SSRF (out-of-band) | 4 / 5 | 5 / 5 |
+| Stack-trace / error leakage | 5 / 5 | 3 / 5 |
+| OS command injection | 1 / 5 | 5 / 5 |
+| Broken access control (BOLA / BFLA) | 3 / 5 | 5 / 5 |
+| SQL injection | 1 / 5 | 1 / 5 |
+| JWT forge / auth bypass | 0 / 5 | 1 / 5 |
+| GraphiQL interface, field suggestions | 0 / 5 | 0 / 5 |
 
-The scanner additionally reported broken access control (BOLA / IDOR on an unauthenticated
-destructive mutation) in three of the five runs; a real issue, but not among DVGA's named challenges.
+Broken access control (BOLA / IDOR on unauthenticated destructive mutations and cross-user reads) is
+not among DVGA's named challenges but is a real issue, so it is included above. The remaining
+denial-of-service variants (deep recursion, resource-intensive, field duplication, aliases) were not
+exercised because the destructive `dos` technique is off in the default configuration.
 
 **Notes.**
 
-- Introspection, batch queries, error and stack-trace leakage, and blind SSRF (4/5) were detected in
+- Both models detect introspection, batch queries, error and stack-trace leakage, and blind SSRF in
   essentially every run.
-- OS command injection and SQL injection were reached but confirmed in only one run each within the
-  30-step budget.
-- The additional denial-of-service variants are marked "not exercised" because the destructive `dos`
-  technique is disabled in the default configuration; they were therefore not attempted in this
-  evaluation and are not scored above.
+- The two separate on the auth-gated, multi-step vulnerabilities: glm confirmed OS command injection
+  (5/5) and broken access control (5/5) far more often than qwen (1/5 and 3/5).
+- SQL injection was reached but confirmed in only one run each within the 30-step budget; the extra
+  denial-of-service variants are off in the default configuration and are not scored above.
 
-These figures reflect a single model under the default configuration at a 30-step budget. A different
-model, a larger budget, or additional enabled techniques would change them.
+These figures reflect the default configuration at a 30-step budget. A larger budget or additional
+enabled techniques would change them (see below).
 
 **Token usage.** Cost depends on the model and provider, so only token counts are reported here.
-Across 30-step runs on `qwen/qwen3.7-max`, a run used about 236,000 ± 12,000 tokens (mean and
-standard deviation), the bulk of it input, since the prompt carries the full schema and running state
-each turn, or roughly 7,900 tokens per step. Token use varies from run to run as the model takes a
-different path each time, so treat this as a typical range rather than a fixed figure; longer runs
-scale up roughly with the step count. A scan reports its own token count live on the dashboard and in
-the final report.
+Across 30-step runs a run used roughly 236,000 ± 12,000 tokens on `qwen/qwen3.7-max` and
+242,000 ± 18,000 on `z-ai/glm-5.2`, the bulk of it input, since the prompt carries the full schema and
+running state each turn. Token use varies from run to run as the model takes a different path each
+time, so treat these as typical ranges; longer runs scale up roughly with the step count. A scan
+reports its own token count live on the dashboard and in the final report.
 
 ### A larger-budget run
 
@@ -121,10 +123,12 @@ of service, OS command injection on two endpoints, SQL injection on two paramete
 JWT via a weak signing secret, blind out-of-band SSRF, a broken-access-control cluster across five
 fields (unauthenticated `deleteAllPastes`, cross-user read, edit, and delete of private pastes, and
 `users`), and sensitive information disclosure through the audit log. Relative to the 30-step runs it
-reached JWT forgery and the systematic access-control cluster that the shorter budget did not.
+reached JWT forgery and the systematic access-control cluster that the shorter budget did not. A
+`qwen/qwen3.7-max` run at the same budget self-terminated after 81 steps with 10 findings, reaching
+arbitrary file write / path traversal and an aliases-based denial of service that the glm run did not.
 
-This is a single, non-deterministic run, included to show that a larger budget and a stronger model
-translate into deeper coverage rather than to establish a rate.
+These are single, non-deterministic runs, included to show that a larger budget translates into
+deeper coverage rather than to establish a rate.
 
 ## Requirements
 
