@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .coverage import render_high_value
@@ -231,13 +232,7 @@ def build_prompt(ctx: dict[str, Any]) -> str:
     )
 
 
-def extract_action(text: str) -> dict[str, Any] | None:
-    """Return the first JSON object carrying an "action" key, or None if none is found.
-
-    Scans left-to-right so surrounding prose or extra objects don't defeat parsing.
-    """
-    if not text:
-        return None
+def _scan_for_action(text: str) -> dict[str, Any] | None:
     decoder = json.JSONDecoder(strict=False)
     start = text.find("{")
     while start != -1:
@@ -248,4 +243,23 @@ def extract_action(text: str) -> dict[str, Any] | None:
         if isinstance(obj, dict) and "action" in obj:
             return obj
         start = text.find("{", start + 1)
+    return None
+
+
+def extract_action(text: str) -> dict[str, Any] | None:
+    """Return the first JSON object carrying an "action" key, or None if none is found.
+
+    Scans left-to-right so surrounding prose or extra objects don't defeat parsing. Some models
+    (glm-5.2) occasionally insert a stray empty string between fields (`","  "action": ...`), which
+    breaks the JSON but leaves the action and args intact; if the strict scan finds nothing, collapse
+    that pattern back to `", "` and scan once more.
+    """
+    if not text:
+        return None
+    obj = _scan_for_action(text)
+    if obj is not None:
+        return obj
+    repaired = re.sub(r'","\s+"', '", "', text)
+    if repaired != text:
+        return _scan_for_action(repaired)
     return None
