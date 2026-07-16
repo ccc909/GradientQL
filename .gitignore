@@ -36,3 +36,4 @@ config/api_key.local
 .DS_Store
 Thumbs.db
 scripts/generate_comparison_chart.py
+scripts/generate_improvement_chart.py

@@ -124,6 +124,27 @@ carries the full schema and running state each turn. The counts are similar beca
 dominates; the models differ mainly in speed and in the depth of what they find. A scan reports its
 own token count live on the dashboard and in the final report.
 
+### Detection after recent changes
+
+Two categories that scored poorly above improved after later changes to the scanner (described in the
+commit history). Same DVGA setup, glm-5.2, five runs at a 30-step budget:
+
+| Category | Before | After |
+|---|---|---|
+| SQL injection (`pastes.filter`) | 1 / 5 | 4 / 5 |
+| JWT forge / auth bypass (`me(token:)`) | 1 / 5 | 4 / 5 |
+
+<img src="docs/detection_improvement.svg" alt="glm-5.2 detection of SQL injection and JWT bypass on DVGA, before and after" width="460">
+
+The scanner was also run against [poc-graphql](https://github.com/righettod/poc-graphql), a
+graphql-java target with a different schema. glm-5.2, five runs at a 30-step budget:
+
+| Category | Detection |
+|---|---|
+| Authentication bypass / token minting (`auth`) | 5 / 5 |
+| Broken access control (BOLA / IDOR) | 5 / 5 |
+| SQL injection (`dogs.namePrefix`) | 4 / 5 |
+
 ### A larger-budget run
 
 To show how coverage scales with budget, one run per model was performed with a 200-step budget and
