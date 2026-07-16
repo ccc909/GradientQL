@@ -28,15 +28,15 @@ llm:
   # api_key: ""
   attacker_model: "qwen/qwen3.7-max"
   temperature: 0.7
-  # Cap on model output per step. This is a CEILING, not a target: you pay for tokens actually
-  # generated, so a high value costs nothing on normal steps and just gives reasoning models room
-  # to finish. Set it near the model's max output. If a response is still truncated at this limit,
-  # the run aborts (keeping findings) instead of retrying the identical call - raise it if so.
-  attacker_max_tokens: 64000
+  # Cap on model output per step. A ceiling, not a target (you pay for tokens actually generated).
+  # A real action is only a few hundred tokens, so this just bounds a stuck generation.
+  attacker_max_tokens: 16000
   timeout: 120
   max_retries: 2
-  # JSON-mode constraint bound to every call. Set to null if your provider rejects it.
-  response_format: { type: json_object }
+  # Leave off. Forcing response_format json_object makes some models (e.g. glm-5.2) drop into a
+  # repetition loop and generate to the token cap; the action parser reads JSON from free text, so
+  # the constraint isn't needed. Set to { type: json_object } only if a provider requires it.
+  response_format: null
   circuit_breaker:
     threshold: 3       # consecutive LLM failures before the breaker opens
     cooldown: 60       # seconds before it retries

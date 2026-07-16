@@ -340,20 +340,6 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             detail = llm_error or "provider returned no response"
             low = detail.lower()
             is_rate_limit = "429" in low or "rate limit" in low
-            is_length = ("length limit" in low or "completionusage" in low
-                         or "finish_reason=length" in low or "'length'" in low)
-
-            if is_length:
-                # Deterministic truncation: the model burned its whole output budget (a reasoning
-                # model overshooting) without emitting a parseable action. Retrying the identical
-                # request just spends another full-length generation, so stop now and keep the
-                # findings so far rather than grinding _LLM_ERROR_ABORT identical multi-minute
-                # calls. The fix for a recurring case is a higher llm.attacker_max_tokens.
-                cap = settings.get("llm", {}).get("attacker_max_tokens", 16384)
-                logger.warning("AGENT aborting at step %d: response truncated at the %s-token output limit "
-                               " - raise llm.attacker_max_tokens to give the model more room", step, cap)
-                ctx.log(f"[{step}] response truncated at the token limit - aborting (raise attacker_max_tokens)")
-                break
 
             consec_llm_error += 1
             logger.warning("AGENT LLM call failed at step %d (%d/%d): %s",
