@@ -217,7 +217,7 @@ class MenuScreen(Screen):
         with Center(id="menu_row"):
             with Vertical(id="menu"):
                 yield Button("START SCAN", id="start", variant="primary")
-                yield Button("RESUME LAST", id="resume")
+                yield Button("RESUME RUN", id="resume")
                 yield Button("SETTINGS", id="settings")
                 yield Button("QUIT", id="quit")
                 yield Static(id="summary", markup=False)
@@ -281,22 +281,10 @@ class MenuScreen(Screen):
             self.notify("A scan is still finishing. Try again in a moment.", severity="warning")
             return
         from .scanner import checkpoint as _cp
-        s = self.app.settings
-        cpf = _cp.latest(s)
-        if cpf is None:
+        if not _cp.list_runs(self.app.settings):
             self.notify("No saved runs to resume (output/checkpoints is empty).", severity="warning")
             return
-        if not _has_key(s):
-            env = s.get("llm", {}).get("api_key_env", "OPENROUTER_API_KEY")
-            self.notify(f"No API key. Set {env} or config/api_key.local.", severity="error")
-            return
-        try:
-            data = _cp.load(cpf)
-        except (ValueError, OSError) as e:  # JSONDecodeError is a ValueError
-            self.notify(f"Checkpoint is unreadable: {str(e)[:60]}", severity="error")
-            return
-        self.app.target = data.get("target_url") or self.app.target
-        self.app.push_screen(DashboardScreen(resume=data))
+        self.app.push_screen(RunsScreen())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "quit":
@@ -307,6 +295,83 @@ class MenuScreen(Screen):
             self.action_resume()
         elif event.button.id == "start":
             self.action_start()
+
+
+class RunsScreen(Screen):
+    BINDINGS = [("escape", "back", "Back"), ("d", "delete_selected", "Delete"),
+                ("c", "clear_all", "Clear all")]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._runs: list[dict[str, Any]] = []
+
+    def compose(self) -> ComposeResult:
+        yield Static("SAVED RUNS", id="runs_title", markup=False)
+        yield DataTable(id="runs")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        tbl = self.query_one("#runs", DataTable)
+        tbl.cursor_type = "row"
+        tbl.border_title = "resume a run"
+        tbl.border_subtitle = "enter resume   d delete   c clear all   esc back"
+        tbl.add_columns("run", "target", "step", "find", "status", "saved")
+        self._reload()
+
+    def _reload(self) -> None:
+        from .scanner import checkpoint as _cp
+        self._runs = _cp.list_runs(self.app.settings)
+        tbl = self.query_one("#runs", DataTable)
+        tbl.clear()
+        for r in self._runs:
+            tbl.add_row(str(r["run_id"])[-13:], str(r["target_url"])[:38],
+                        f"{r['step'] + 1}/{r['budget']}", str(r["findings"]),
+                        "done" if r["complete"] else "partial", str(r["saved_at"])[:19])
+        self.query_one("#runs_title", Static).update("SAVED RUNS" if self._runs else "SAVED RUNS  -  none")
+
+    def _selected(self) -> dict[str, Any] | None:
+        i = self.query_one("#runs", DataTable).cursor_row
+        return self._runs[i] if 0 <= i < len(self._runs) else None
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id == "runs":
+            self._resume(self._selected())
+
+    def _resume(self, run: dict[str, Any] | None) -> None:
+        if not run:
+            return
+        from .scanner import checkpoint as _cp
+        s = self.app.settings
+        if not _has_key(s):
+            env = s.get("llm", {}).get("api_key_env", "OPENROUTER_API_KEY")
+            self.notify(f"No API key. Set {env} or config/api_key.local.", severity="error")
+            return
+        try:
+            data = _cp.load(_cp.checkpoint_path(s, run["run_id"]))
+        except (ValueError, OSError) as e:  # JSONDecodeError is a ValueError
+            self.notify(f"Checkpoint unreadable: {str(e)[:50]}", severity="error")
+            return
+        self.app.target = data.get("target_url") or self.app.target
+        self.app.pop_screen()
+        self.app.push_screen(DashboardScreen(resume=data))
+
+    def action_delete_selected(self) -> None:
+        run = self._selected()
+        if not run:
+            return
+        from .scanner import checkpoint as _cp
+        if _cp.delete(self.app.settings, run["run_id"]):
+            self.notify(f"deleted {run['run_id']}")
+            self._reload()
+
+    def action_clear_all(self) -> None:
+        from .scanner import checkpoint as _cp
+        n = _cp.clear_all(self.app.settings)
+        self.notify(f"cleared {n} run(s)")
+        self._reload()
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
 
 
 class SettingsScreen(Screen):
@@ -768,6 +833,10 @@ class GradientQLApp(App):
               border: double $primary; border-title-color: $background; border-title-background: $primary;
               border-title-align: center; border-subtitle-color: $primary; }
     #fd_body { width: auto; height: auto; }
+    #runs_title { text-style: bold; color: $background; background: $primary; padding: 0 1; height: 1; }
+    #runs { height: 1fr; border: double $primary;
+            border-title-color: $background; border-title-background: $primary;
+            border-title-align: center; border-subtitle-color: $primary; }
     """
 
     def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:
