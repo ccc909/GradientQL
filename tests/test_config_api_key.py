@@ -17,7 +17,7 @@ def _write(tmp_path, body):
 
 def _shared_key_dir(tmp_path, monkeypatch, contents=None):
     """Point the shared-key lookup at a tmp config dir; optionally seed api_key.local."""
-    monkeypatch.setattr(config, "_CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config, "_CONFIG_DIRS", (tmp_path,))
     if contents is not None:
         (tmp_path / "api_key.local").write_text(contents, encoding="utf-8")
 
@@ -66,7 +66,7 @@ def test_whitespace_only_key_falls_back(tmp_path, monkeypatch):
 
 def test_no_env_and_no_key_is_empty(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    monkeypatch.setattr(config, "_CONFIG_DIR", tmp_path)  # no shared file present
+    monkeypatch.setattr(config, "_CONFIG_DIRS", (tmp_path,))  # no shared file present
     path = _write(tmp_path, """
         llm:
           api_key_env: "OPENROUTER_API_KEY"

@@ -86,7 +86,7 @@ def test_search_schema_reports_more_indicator_when_capped():
                     for i in range(50)}}
     hits = schema.search_schema(sm, "color", limit=20)
     assert len(hits) == 20                                    # slot reserved, not overflowed
-    assert any("more — refine keyword" in h for h in hits)
+    assert any("more - refine keyword" in h for h in hits)
     # 50 matches, 19 shown + 1 indicator -> 31 more
     assert any("(+31 more" in h for h in hits)
 
@@ -96,7 +96,7 @@ def test_search_schema_no_indicator_when_all_shown():
           "Query": {f"colorField{i}": {"args": [], "return_type": "String", "description": ""}
                     for i in range(5)}}
     hits = schema.search_schema(sm, "color", limit=20)
-    assert not any("more — refine keyword" in h for h in hits)
+    assert not any("more - refine keyword" in h for h in hits)
 
 
 def test_search_schema_finds_field_by_arg_type():

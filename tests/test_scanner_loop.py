@@ -123,10 +123,12 @@ def test_abort_on_consecutive_no_action(patch_loop):
 
 
 def test_survives_bad_then_good_output(patch_loop):
-    # garbage then a valid done — consec_noaction resets, the run ends cleanly
+    # garbage then a valid done: the in-step no-action re-prompt recovers both garbage
+    # replies inside step 0, so the run reaches done and ends cleanly without inventing findings.
     actions = ["garbage", "garbage", {"action": "done", "args": {"reason": "ok"}}]
     res = patch_loop(actions, MockClient(), budget=4)
-    assert res["steps"] == 3
+    assert res["steps"] == 2               # recovered in-step, then done (deferred once, then finalizes)
+    assert res["vulnerabilities"] == []
 
 
 def test_repeated_identical_failure_blocks_fast(patch_loop):

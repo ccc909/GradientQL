@@ -118,11 +118,11 @@ def _base_settings():
     return {"llm": {"api_key": "test", "attacker_model": "test/model"}}
 
 
-def test_response_format_bound_by_default():
+def test_response_format_off_by_default():
     llm.clear_llm_cache()
     built = llm.get_attacker_llm(_base_settings())
-    # Default on: a RunnableBinding carrying response_format kwargs.
-    assert built.kwargs.get("response_format") == {"type": "json_object"}
+    # Default off: plain ChatOpenAI, no bound response_format (json_object makes some models loop).
+    assert "response_format" not in getattr(built, "kwargs", {})
 
 
 def test_response_format_disabled_when_falsy():
