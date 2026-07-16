@@ -1,9 +1,10 @@
-"""Generate docs/model_comparison.svg: a DOS-themed bar chart of per-category DVGA detection rate
-for the two benchmarked models. Run with `python scripts/generate_comparison_chart.py`. No deps.
+"""Generate docs/model_comparison.svg: a DOS-themed grid of per-category DVGA detection rate for the
+benchmarked models. Each cell is a five-segment gauge; the filled segments are the number of runs
+(out of five, at a 30-step budget) in which that model detected the category. Run with
+`python scripts/generate_comparison_chart.py`. No dependencies.
 
-Data: five runs per model at a 30-step budget; each value is the number of runs (out of five) in
-which that DVGA category was detected. qwen figures are the documented benchmark; glm figures are
-from the five-run set in this repo's results.
+qwen figures are the documented benchmark; glm and gpt-oss figures are from the five-run sets in this
+repo's results.
 """
 from __future__ import annotations
 
@@ -11,44 +12,46 @@ import pathlib
 
 GOLD = "#e8a317"
 GOLD_HI = "#ffcf5c"
-AMBER = "#b9770c"      # qwen bars (dimmer amber)
 BG = "#100e0a"
 TEXT = "#ece0c8"
 MUTED = "#8a7a5c"
-GRID = "#332813"
+EMPTY_F = "#1c160e"   # empty segment fill
+EMPTY_S = "#4a3c22"   # empty segment outline
+SEP = "#2a2213"       # column separator
 
-# (category, qwen /5, glm /5), ordered by severity/interest
-DATA = [
-    ("OS COMMAND INJECTION", 1, 5),
-    ("SQL INJECTION", 1, 1),
-    ("BROKEN ACCESS (BOLA/BFLA)", 3, 5),
-    ("JWT / AUTH BYPASS", 0, 1),
-    ("BLIND SSRF (OOB)", 4, 5),
-    ("BATCH-QUERY DOS", 5, 5),
-    ("STACK-TRACE LEAK", 5, 3),
-    ("INTROSPECTION", 5, 5),
+MODELS = [("qwen 3.7-max", "6.0"), ("glm-5.2", "7.4"), ("gpt-oss-120b", "4.8")]
+# category, [qwen, glm, gpt-oss] detections out of 5; hardest (most discriminating) first
+CATS = [
+    ("OS COMMAND INJECTION", [1, 5, 1]),
+    ("BROKEN ACCESS (BOLA/BFLA)", [3, 5, 2]),
+    ("BLIND SSRF (OOB)", [4, 5, 1]),
+    ("SQL INJECTION", [1, 1, 0]),
+    ("JWT / AUTH BYPASS", [0, 1, 0]),
+    ("STACK-TRACE LEAK", [5, 3, 5]),
+    ("BATCH-QUERY DOS", [5, 5, 5]),
+    ("INTROSPECTION", [5, 5, 5]),
 ]
 
-W = 760
-PAD_L, PAD_R, PAD_T, PAD_B = 232, 54, 108, 58
-ROW_H, BAR_H, BAR_GAP = 44, 14, 6
-MAXV = 5
-PLOT_W = W - PAD_L - PAD_R
-H = PAD_T + len(DATA) * ROW_H + PAD_B
+W = 726
+LABEL_R = 238
+PAD_R = 22
+PAD_T = 122
+PAD_B = 44
+ROW_H = 36
+SQ = 17
+GAP = 4
+N = 5
+COL_W = (W - LABEL_R - PAD_R) / len(MODELS)
+GAUGE_W = N * SQ + (N - 1) * GAP
+H = PAD_T + len(CATS) * ROW_H + PAD_B
 
 
-def x(v: float) -> float:
-    return PAD_L + v / MAXV * PLOT_W
+def col_x(m: int) -> float:
+    return LABEL_R + m * COL_W
 
 
-def solid_bar(px: float, py: float, w: float, fill: str = GOLD) -> str:
-    return f'<rect x="{px:.0f}" y="{py:.0f}" width="{w:.0f}" height="{BAR_H}" fill="{fill}" stroke="{BG}" stroke-width="1"/>'
-
-
-def outline_bar(px: float, py: float, w: float) -> str:
-    # hollow bar for the baseline model, distinct from the solid one at a glance
-    return (f'<rect x="{px + 1:.0f}" y="{py + 1:.0f}" width="{max(w - 2, 2):.0f}" height="{BAR_H - 2}" '
-            f'fill="none" stroke="{AMBER}" stroke-width="1.6"/>')
+def gauge_x(m: int) -> float:
+    return col_x(m) + (COL_W - GAUGE_W - 26) / 2
 
 
 def main() -> None:
@@ -56,39 +59,43 @@ def main() -> None:
     s.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" '
              f'font-family="ui-monospace, \'Courier New\', monospace">')
     s.append(f'<rect width="{W}" height="{H}" fill="{BG}"/>')
-    # double-line DOS frame
     s.append(f'<rect x="6" y="6" width="{W - 12}" height="{H - 12}" fill="none" stroke="{GOLD}" stroke-width="2"/>')
     s.append(f'<rect x="11" y="11" width="{W - 22}" height="{H - 22}" fill="none" stroke="{GOLD}" stroke-width="1"/>')
-    # title
-    s.append(f'<text x="{W / 2:.0f}" y="40" fill="{GOLD_HI}" font-size="20" font-weight="bold" '
-             f'text-anchor="middle" letter-spacing="3">DVGA DETECTION RATE</text>')
-    s.append(f'<text x="{W / 2:.0f}" y="61" fill="{MUTED}" font-size="11.5" text-anchor="middle" '
-             f'letter-spacing="1.5">5 RUNS @ BUDGET 30  ::  RUNS (OF 5) IN WHICH EACH CATEGORY WAS FOUND</text>')
-    # legend
-    s.append(outline_bar(PAD_L, 78, 15))
-    s.append(f'<text x="{PAD_L + 23}" y="90" fill="{TEXT}" font-size="12.5">qwen/qwen3.7-max  (6.0/run)</text>')
-    s.append(solid_bar(PAD_L + 300, 78, 15))
-    s.append(f'<text x="{PAD_L + 323}" y="90" fill="{TEXT}" font-size="12.5">z-ai/glm-5.2  (7.4/run)</text>')
-    # gridlines + axis ticks
-    axis_bottom = PAD_T + len(DATA) * ROW_H
-    for v in range(MAXV + 1):
-        gx = x(v)
-        s.append(f'<line x1="{gx:.0f}" y1="{PAD_T}" x2="{gx:.0f}" y2="{axis_bottom}" stroke="{GRID}" stroke-width="1"/>')
-        s.append(f'<text x="{gx:.0f}" y="{axis_bottom + 19}" fill="{MUTED}" font-size="11" text-anchor="middle">{v}</text>')
-    s.append(f'<text x="{(PAD_L + x(MAXV)) / 2:.0f}" y="{axis_bottom + 40}" fill="{MUTED}" font-size="11" '
-             f'text-anchor="middle" letter-spacing="1">DETECTIONS (OUT OF 5 RUNS)</text>')
+    s.append(f'<text x="{W / 2:.0f}" y="42" fill="{GOLD_HI}" font-size="20" font-weight="bold" '
+             f'text-anchor="middle" letter-spacing="3">DVGA DETECTION BY MODEL</text>')
+    s.append(f'<text x="{W / 2:.0f}" y="63" fill="{MUTED}" font-size="11" text-anchor="middle" '
+             f'letter-spacing="1.5">5 RUNS @ BUDGET 30  ::  FILLED SEGMENTS = RUNS (OF 5) THAT FOUND THE CATEGORY</text>')
+    grid_bottom = PAD_T + len(CATS) * ROW_H
+    # column headers
+    for m, (name, mean) in enumerate(MODELS):
+        cx = col_x(m) + COL_W / 2
+        s.append(f'<text x="{cx:.0f}" y="92" fill="{TEXT}" font-size="13.5" font-weight="bold" '
+                 f'text-anchor="middle">{name}</text>')
+        s.append(f'<text x="{cx:.0f}" y="109" fill="{GOLD}" font-size="11" text-anchor="middle" '
+                 f'letter-spacing="1">{mean} / run</text>')
+    # column separators
+    for m in range(1, len(MODELS)):
+        lx = col_x(m)
+        s.append(f'<line x1="{lx:.0f}" y1="{PAD_T - 8:.0f}" x2="{lx:.0f}" y2="{grid_bottom:.0f}" '
+                 f'stroke="{SEP}" stroke-width="1"/>')
     # rows
-    for i, (cat, q, g) in enumerate(DATA):
-        ry = PAD_T + i * ROW_H + 6
-        s.append(f'<text x="{PAD_L - 14}" y="{ry + BAR_H + 4:.0f}" fill="{TEXT}" font-size="12" '
-                 f'text-anchor="end" letter-spacing="0.5">{cat}</text>')
-        if q > 0:
-            s.append(outline_bar(PAD_L, ry, x(q) - PAD_L))
-            s.append(f'<text x="{x(q) + 7:.0f}" y="{ry + BAR_H - 2:.0f}" fill="{MUTED}" font-size="11">{q}</text>')
-        gy = ry + BAR_H + BAR_GAP
-        if g > 0:
-            s.append(solid_bar(PAD_L, gy, x(g) - PAD_L))
-            s.append(f'<text x="{x(g) + 7:.0f}" y="{gy + BAR_H - 2:.0f}" fill="{GOLD_HI}" font-size="11">{g}</text>')
+    for r, (cat, vals) in enumerate(CATS):
+        cy = PAD_T + r * ROW_H + ROW_H / 2
+        s.append(f'<text x="{LABEL_R - 16:.0f}" y="{cy + 4:.0f}" fill="{TEXT}" font-size="12" '
+                 f'text-anchor="end">{cat}</text>')
+        for m, v in enumerate(vals):
+            gx = gauge_x(m)
+            sqy = cy - SQ / 2
+            for i in range(N):
+                fx = gx + i * (SQ + GAP)
+                if i < v:
+                    s.append(f'<rect x="{fx:.0f}" y="{sqy:.0f}" width="{SQ}" height="{SQ}" '
+                             f'fill="{GOLD}" stroke="{BG}" stroke-width="1"/>')
+                else:
+                    s.append(f'<rect x="{fx:.0f}" y="{sqy:.0f}" width="{SQ}" height="{SQ}" '
+                             f'fill="{EMPTY_F}" stroke="{EMPTY_S}" stroke-width="1"/>')
+            s.append(f'<text x="{gx + GAUGE_W + 8:.0f}" y="{cy + 4:.0f}" '
+                     f'fill="{GOLD_HI if v else MUTED}" font-size="12">{v}</text>')
     s.append("</svg>")
     out = pathlib.Path(__file__).resolve().parent.parent / "docs" / "model_comparison.svg"
     out.write_text("\n".join(s), encoding="utf-8")
