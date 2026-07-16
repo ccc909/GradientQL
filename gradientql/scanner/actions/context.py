@@ -80,10 +80,13 @@ class ActionContext:
             "errors": json.dumps(errors, default=str)[:4000] if errors else "",
         })
 
-    def record(self, vuln_type: str, target: str, evidence: str, score: float = 2.5) -> bool:
+    def record(self, vuln_type: str, target: str, evidence: str, score: float = 2.5,
+               req: dict[str, Any] | None = None) -> bool:
         """Store a new finding, returning False if it duplicates one or was previously retracted.
 
-        On success appends to vulns, assigns an id, and streams it to any live subscriber.
+        On success appends to vulns, assigns an id, captures the triggering request (so the UI can
+        reconstruct a curl), and streams it to any live subscriber. `req` defaults to the client's
+        most recent request when not given.
         """
         key = _finding_key(vuln_type, target)
         if _retract_sig(vuln_type, target) in self._retracted_sigs:
@@ -92,10 +95,16 @@ class ActionContext:
             return False
         self._seen_finding_keys.add(key)
         self._fid += 1
+        if req is None:
+            req = getattr(self.client, "last_request", None)
+        payload = req.get("payload") if isinstance(req, dict) else None
         v = {
             "id": f"f{self._fid}",
             "vuln_type": vuln_type, "target_node": target or "endpoint",
-            "query": "", "variables": {}, "evidence": str(evidence)[:2000],
+            "query": (payload or {}).get("query", "") if isinstance(payload, dict) else "",
+            "variables": (payload or {}).get("variables", {}) if isinstance(payload, dict) else {},
+            "evidence": str(evidence)[:2000],
+            "request": req if isinstance(req, dict) else None,
             "score": score, "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         self.vulns.append(v)

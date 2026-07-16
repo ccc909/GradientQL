@@ -39,7 +39,7 @@ def is_enabled(settings: dict[str, Any]) -> bool:
 
 
 def interval(settings: dict[str, Any]) -> int:
-    return max(1, int(_cfg(settings).get("every", 5)))
+    return max(1, int(_cfg(settings).get("every", 1)))  # default: snapshot every step
 
 
 def checkpoint_dir(settings: dict[str, Any]) -> pathlib.Path:
@@ -121,6 +121,58 @@ def save(path: Any, *, run_id: str, ctx: Any, schema_map: dict[str, Any],
             pass
         raise
     logger.info("AGENT: checkpoint saved at step %d -> %s", step, path)
+
+
+def list_runs(settings: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every checkpointed run, newest first, summarized for a resume picker."""
+    d = checkpoint_dir(settings)
+    out: list[dict[str, Any]] = []
+    if not d.is_dir():
+        return out
+    for p in d.glob("gql-*.json"):
+        try:
+            data = load(p)
+        except Exception:  # noqa: BLE001
+            continue
+        c = data.get("ctx", {}) or {}
+        out.append({
+            "run_id": data.get("run_id", p.stem),
+            "target_url": data.get("target_url", "?"),
+            "step": int(data.get("step", -1)),
+            "budget": int(data.get("budget", 0)),
+            "findings": len(c.get("vulns", []) or []),
+            "complete": bool(data.get("complete")),
+            "saved_at": str(data.get("saved_at", "")),
+            "mtime": p.stat().st_mtime,
+        })
+    out.sort(key=lambda r: r["mtime"], reverse=True)
+    return out
+
+
+def delete(settings: dict[str, Any], run_id: str) -> bool:
+    """Delete one run's checkpoint; return True if a file was removed."""
+    p = resolve(settings, run_id) or checkpoint_path(settings, run_id)
+    try:
+        if p.is_file():
+            p.unlink()
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def clear_all(settings: dict[str, Any]) -> int:
+    """Delete every checkpoint; return how many were removed."""
+    d = checkpoint_dir(settings)
+    n = 0
+    if d.is_dir():
+        for p in d.glob("gql-*.json"):
+            try:
+                p.unlink()
+                n += 1
+            except OSError:
+                pass
+    return n
 
 
 def load(path: Any) -> dict[str, Any]:

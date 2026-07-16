@@ -239,6 +239,7 @@ class GraphQLClient:
         http: dict[str, Any] | None = None,
     ) -> None:
         self.url = url
+        self.last_request: dict[str, Any] | None = None  # the most recent request, for copy-curl
         self.session = requests.Session()
         if headers:
             self.session.headers.update(headers)
@@ -412,6 +413,8 @@ class GraphQLClient:
                 payload["variables"] = variables
 
         self._log_curl(payload)
+        self.last_request = {"url": self.url, "payload": payload,
+                             "headers": {**dict(self.session.headers), **(extra_headers or {})}}
 
         start_time = time.time()
         try:

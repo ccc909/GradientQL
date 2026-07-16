@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import pathlib
 import queue
+import shlex
 import time
 from typing import Any
 
@@ -14,7 +16,7 @@ from rich.text import Span, Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Center, Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.validation import Integer, Number
 from textual.widgets import (
@@ -427,6 +429,62 @@ class AttacksScreen(Screen):
         self.app.pop_screen()
 
 
+def _finding_curl(finding: dict[str, Any]) -> str:
+    """Reconstruct a copy-pasteable curl for the request that produced a finding."""
+    req = finding.get("request") or {}
+    url = req.get("url") or finding.get("target_node") or "<target>"
+    payload = req.get("payload") or {"query": finding.get("query", "")}
+    headers = req.get("headers") or {"Content-Type": "application/json"}
+    parts = ["curl -sk -X POST " + shlex.quote(str(url))]
+    for k, v in headers.items():
+        if str(k).lower() in ("content-length", "host"):
+            continue
+        parts.append("-H " + shlex.quote(f"{k}: {v}"))
+    parts.append("-d " + shlex.quote(json.dumps(payload)))
+    return " \\\n  ".join(parts)
+
+
+class FindingDetailScreen(ModalScreen):
+    BINDINGS = [("escape", "close", "Close"), ("c", "copy_curl", "Copy curl"),
+                ("e", "copy_expl", "Copy explanation")]
+
+    def __init__(self, finding: dict[str, Any]) -> None:
+        super().__init__()
+        self._f = finding
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="fd_box"):
+            yield Static(id="fd_body", markup=False)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        f = self._f
+        box = self.query_one("#fd_box")
+        box.border_title = "finding detail"
+        box.border_subtitle = "c copy curl   e copy explanation   esc close"
+        t = Text()
+        t.append(f"[{float(f.get('score', 0)):.1f}]  {f.get('vuln_type', '')}\n", style=f"bold {GOLD_HI}")
+        t.append(f"target  {f.get('target_node', '')}\n\n", style=GOLD)
+        ev = str(f.get("evidence", "")).strip()
+        if ev:
+            t.append("EXPLANATION\n", style=f"bold {GOLD}")
+            t.append(ev[:1600] + "\n\n", style="grey78")
+        t.append("CURL  (press c to copy)\n", style=f"bold {GOLD}")
+        t.append(_finding_curl(f), style="cyan")
+        self.query_one("#fd_body", Static).update(t)
+
+    def action_close(self) -> None:
+        self.app.pop_screen()
+
+    def action_copy_curl(self) -> None:
+        self.app.copy_to_clipboard(_finding_curl(self._f))
+        self.notify("curl copied to clipboard")
+
+    def action_copy_expl(self) -> None:
+        self.app.copy_to_clipboard(str(self._f.get("evidence", "")))
+        self.notify("explanation copied to clipboard")
+
+
 class DashboardScreen(Screen):
     BINDINGS = [("escape", "back", "Stop & back")]
 
@@ -444,6 +502,7 @@ class DashboardScreen(Screen):
         self._run_id: str | None = resume.get("run_id") if resume else None
         self._last_step_ts = 0.0
         self._pulse_i = 0
+        self._frows: list[Any] = []
 
     def on_unmount(self) -> None:
         self._alive = False
@@ -465,6 +524,13 @@ class DashboardScreen(Screen):
         if msg:
             self._steer_q.put(msg)
             self._log(f"operator: {msg}", f"bold {GOLD_HI}")
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "findings":
+            return
+        idx = event.cursor_row
+        if 0 <= idx < len(self._frows):
+            self.app.push_screen(FindingDetailScreen(self._frows[idx]))
 
     def compose(self) -> ComposeResult:
         yield Static("", id="dash_header", markup=False)
@@ -524,6 +590,8 @@ class DashboardScreen(Screen):
         self.query_one("#loot_scroll").border_title = "loot"
         tbl = self.query_one("#findings", DataTable)
         tbl.border_title = "findings"
+        tbl.border_subtitle = "enter: curl + explanation"
+        tbl.cursor_type = "row"
         tbl.add_columns("score", "finding", "target")
         self._set_header("VERIFYING", "yellow", self.app.target)
         self._start = time.monotonic()
@@ -611,7 +679,8 @@ class DashboardScreen(Screen):
         self.query_one("#loot", Static).update(loot_text(ctx))
         tbl = self.query_one("#findings", DataTable)
         tbl.clear()
-        for v in ctx.vulns[-10:]:
+        self._frows = list(ctx.vulns[-10:])
+        for v in self._frows:
             tbl.add_row(f"{float(v.get('score', 0)):.1f}", str(v.get("vuln_type", ""))[:44],
                         str(v.get("target_node", ""))[:28])
 
@@ -641,11 +710,14 @@ class GradientQLApp(App):
     CSS = """
     Screen { align: left top; }
 
-    /* DOS function-key bar: reverse-video footer */
-    Footer { background: $primary; color: $background; }
-    Footer > .footer-key--key { background: $primary; color: $background; text-style: bold; }
-    Footer > .footer-key--description { background: $primary; color: $background; }
-    FooterKey:hover { background: $accent; color: $background; }
+    /* DOS function-key bar: reverse-video footer, dark text on amber */
+    Footer { background: $primary; }
+    FooterKey { background: $primary; }
+    FooterKey > .footer-key--key { background: $primary; color: $background; text-style: bold; }
+    FooterKey > .footer-key--description { background: $primary; color: $background; }
+    FooterKey:hover { background: $accent; }
+    FooterKey:hover > .footer-key--key { background: $accent; color: $background; text-style: bold; }
+    FooterKey:hover > .footer-key--description { background: $accent; color: $background; }
 
     /* every bordered panel gets a reverse-video DOS title tab */
     .panel, #menu, #cov_scroll, #activity, #loot_scroll, #findings {
@@ -690,6 +762,12 @@ class GradientQLApp(App):
     #loot { width: auto; height: auto; }
     #findings { height: 9; }
     #steer { height: 3; border: none; border-top: solid $primary; background: transparent; color: $accent; }
+
+    FindingDetailScreen { align: center middle; }
+    #fd_box { width: 92; max-width: 96%; height: auto; max-height: 82%; padding: 1 2; background: $surface;
+              border: double $primary; border-title-color: $background; border-title-background: $primary;
+              border-title-align: center; border-subtitle-color: $primary; }
+    #fd_body { width: auto; height: auto; }
     """
 
     def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:
