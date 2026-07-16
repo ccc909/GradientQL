@@ -32,11 +32,47 @@ On an innocuous-looking query the model noticed a database error in the response
 which turned into a blind SQL injection with real impact. It was reported through the program and
 fixed.
 
+## Scope and safety
+
 Please note: this tool sends real attack traffic and has no built-in consent check. It targets
 whatever URL you give it. Only run it against systems you are allowed to test: your own deployment,
 a local target like DVGA, or something inside a bug bounty or disclosure scope you hold. Running it
 against someone else's system without permission is likely illegal, and staying in scope is your
 responsibility.
+
+## Quickstart
+
+**Requirements:** Python 3.10 or newer, an API key for a model on
+[OpenRouter](https://openrouter.ai), and room for the machine-learning stack (FAISS,
+sentence-transformers, and PyTorch) that the scanner uses for schema search.
+
+**1. Install.** Clone the repository and install it in editable mode (or run everything in
+containers, see [Docker](#docker)):
+
+```
+pip install -e ".[dev]"
+```
+
+**2. Set your model key.** The scanner uses the first key it finds, in this order: the `llm.api_key`
+field in your settings file, a `config/api_key.local` file (gitignored), or the environment variable
+named by `llm.api_key_env`, which defaults to `OPENROUTER_API_KEY`.
+
+**3. Run a scan** against an endpoint you are allowed to test:
+
+```
+python -m gradientql --url https://your-target.example/graphql
+```
+
+To try it safely, scan the bundled
+[DVGA](https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application) target in one command with
+Docker:
+
+```
+OPENROUTER_API_KEY=sk-... docker compose -f docker/docker-compose.yml up --build
+```
+
+Run `gradientql` with no `--url` in an interactive terminal to open the
+[interactive interface](#the-interactive-interface) instead of plain logs.
 
 ## Results on DVGA
 
@@ -63,7 +99,10 @@ decision, so runs are non-deterministic and differ from one another.
 essentially every run and separate on the multi-step authentication chains, where glm is strongest and
 the small, fast gpt-oss model is weakest.
 
-<p align="center"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model" width="720"></p>
+Each row below is one category over five runs at a 30-step budget; the filled segments are the runs
+(out of five) in which that model found it.
+
+<img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="720">
 
 DVGA lists 21 named vulnerabilities (OS command injection is counted as two variants). Three of them
 (stored XSS, HTML injection, log injection) require a browser or access to the server logs and are
@@ -129,61 +168,24 @@ results: fast and cheap, but shallower on the multi-step chains.
 These are single, non-deterministic runs, included to show that a larger budget translates into deeper
 coverage rather than to establish a rate.
 
-## Requirements
+## Usage
 
-- Python 3.10 or newer
-- An API key for a model on OpenRouter
-- Room for the machine-learning stack (FAISS, sentence-transformers, and PyTorch) that the scanner
-  uses for schema search
+### Running a scan
 
-## Installation
-
-Clone the repository and install it in editable mode:
-
-```
-pip install -e ".[dev]"
-```
-
-## Docker
-
-Images for the scanner and a patched DVGA target are provided, with a one-command Compose setup that
-brings up DVGA and scans it. Full instructions are in [docs/docker.md](docs/docker.md); the short
-version:
-
-```
-OPENROUTER_API_KEY=sk-... docker compose -f docker/docker-compose.yml up --build
-```
-
-## Setting the model key
-
-The scanner looks for the model API key in three places and uses the first one it finds:
-
-1. The `llm.api_key` field in your settings file.
-2. A file at `config/api_key.local`, which is ignored by git.
-3. The environment variable named by `llm.api_key_env`, which defaults to `OPENROUTER_API_KEY`.
-
-## Running a scan
-
-Point the scanner at an endpoint you are allowed to test:
-
-```
-python -m gradientql --url https://your-target.example/graphql
-```
-
-Add `--trace` to record everything the model did during the run. This is the main way to
-understand a scan after it finishes:
+Add `--trace` to record everything the model did during the run. This is the main way to understand a
+scan after it finishes:
 
 ```
 python -m gradientql --url https://your-target.example/graphql --trace
 ```
 
-`--url` overrides the target set in the config file, and after installing, the `gradientql` command
-runs the same thing. The mode is chosen automatically: run `gradientql` with no `--url` in an
-interactive terminal and it opens the [interface](#interactive-interface); pass `--url`, pipe or
-redirect the output, or add `--no-tui`, and it prints plain logs. `--tui` forces the interface even
-with `--url` set, as long as a terminal is attached.
+The mode is chosen automatically: run `gradientql` with no `--url` in an interactive terminal and it
+opens the [interface](#the-interactive-interface); pass `--url`, pipe or redirect the output, or add
+`--no-tui`, and it prints plain logs. `--tui` forces the interface even with `--url` set, as long as a
+terminal is attached. `--url` overrides the target set in the config file, and after installing, the
+`gradientql` command runs the same thing as `python -m gradientql`.
 
-## Command-line arguments
+### Command-line arguments
 
 | Argument | Effect |
 | --- | --- |
@@ -195,7 +197,7 @@ with `--url` set, as long as a terminal is attached.
 | `--no-tui` | Force plain log output even in an interactive terminal. |
 | `-h`, `--help` | Show usage and exit. |
 
-## Interactive interface
+### The interactive interface
 
 Run `gradientql` with no arguments to open the TUI, which is composed of:
 
@@ -212,26 +214,19 @@ Run `gradientql` with no arguments to open the TUI, which is composed of:
   steering box along the bottom lets you redirect the agent mid-scan (see
   [Steering the agent](#steering-the-agent)).
 
-The screens are shown in the [gallery](#gradientql) near the top of this page.
-
-The coverage map marks each root field as untested, probed, auth-gated, data, exhausted, or a
-finding, so you can watch the attack surface fill in as the agent works. Pass `--tui` to force this
-interface together with `--url`, or `--no-tui` to force plain log output.
-
-### Using it
+The screens are shown in the [gallery](#gradientql) near the top of this page. The coverage map marks
+each root field as untested, probed, auth-gated, data, exhausted, or a finding, so you can watch the
+attack surface fill in as the agent works.
 
 The interface is keyboard- and mouse-driven; the active keys show in the footer.
 
 - **Menu**: `s` starts a scan, `g` opens settings, `q` quits.
-- **Settings and attacks**: edit the fields and switches; the Attacks button opens the
-  per-technique toggles. `Esc` (or Back) saves and returns, and changes apply to the next scan.
+- **Settings and attacks**: edit the fields and switches; the Attacks button opens the per-technique
+  toggles. `Esc` (or Back) saves and returns, and changes apply to the next scan.
 - **Dashboard**: opens when a scan starts and updates in place. `Esc` stops the scan and returns to
   the menu.
 
-A scan needs a target URL and a working key; the dashboard verifies the key before it starts and
-stops with a clear message if the key is missing or rejected.
-
-## Steering the agent
+### Steering the agent
 
 The agent runs on its own, but you can redirect it while a scan is in progress. Whatever you send is
 injected into the model's next prompt as an operator instruction that takes priority over its own
@@ -244,32 +239,6 @@ traversal"), flag a miss ("you skipped importPaste"), or change tack ("stop reco
   the scan and it is picked up on the next step. This is disabled when input is piped or redirected.
 
 A steering message stays in view for a few steps so the agent does not lose it mid-action.
-
-## How it works
-
-A scan is a short pipeline. The scanner introspects the schema, runs a quick check for common
-misconfigurations, hands control to the model, waits for any out-of-band callbacks to arrive,
-removes duplicate findings, and prints a report.
-
-The middle step is where the work happens. On each turn the model is given a compressed view of
-the situation: the schema, a summary of what it has already tried, the facts it has recorded, and
-any credentials or tokens it has harvested. It replies with one JSON action, for example:
-
-```json
-{"thought": "...", "action": "sweep", "args": {}, "learned": "optional note", "verdict": {}}
-```
-
-The `learned` and `verdict` fields are optional and can be attached to any action. They are how
-the model writes to its own memory. `learned` records a fact worth keeping, and `verdict` marks a
-field as dead, open, or exploited. The program also classifies each response on its own, but the
-model's verdict takes priority, so the model stays in charge of judgment while a simple default
-fills in when it stays silent.
-
-The actions the model can take are `graphql`, `sweep`, `search_schema`, `fuzz`, `set_identity`,
-`temp_mail`, `forge_jwt`, `oob_url`, `dos`, `smuggle`, `csrf`, `auth_test`, `batch_brute`, `visit`,
-`note`, `report_finding`, and `done`. Between them they cover
-reconnaissance, authentication (including registering an account, reading a confirmation email
-from a disposable mailbox, and logging in), and the individual attack techniques.
 
 ## Configuration
 
@@ -313,6 +282,39 @@ To reach authenticated objects, which is where bugs like broken object-level aut
 the scanner needs a session. You can give it one by putting a valid token in `target.headers`, or
 you can let it earn one itself through the signup, email confirmation, and login flow using the
 `temp_mail` action.
+
+## How it works
+
+A scan is a short pipeline. The scanner introspects the schema, runs a quick check for common
+misconfigurations, hands control to the model, waits for any out-of-band callbacks to arrive,
+removes duplicate findings, and prints a report.
+
+The middle step is where the work happens. On each turn the model is given a compressed view of
+the situation: the schema, a summary of what it has already tried, the facts it has recorded, and
+any credentials or tokens it has harvested. It replies with one JSON action, for example:
+
+```json
+{"thought": "...", "action": "sweep", "args": {}, "learned": "optional note", "verdict": {}}
+```
+
+The `learned` and `verdict` fields are optional and can be attached to any action. They are how
+the model writes to its own memory. `learned` records a fact worth keeping, and `verdict` marks a
+field as dead, open, or exploited. The program also classifies each response on its own, but the
+model's verdict takes priority, so the model stays in charge of judgment while a simple default
+fills in when it stays silent.
+
+The actions the model can take are `graphql`, `sweep`, `search_schema`, `fuzz`, `set_identity`,
+`temp_mail`, `forge_jwt`, `oob_url`, `dos`, `smuggle`, `csrf`, `auth_test`, `batch_brute`, `visit`,
+`note`, `report_finding`, and `done`. Between them they cover
+reconnaissance, authentication (including registering an account, reading a confirmation email
+from a disposable mailbox, and logging in), and the individual attack techniques.
+
+## Docker
+
+Two images are provided: `gradientql` (the scanner) and `gradientql-dvga` (a patched DVGA target with
+the gevent concurrency fix baked in). The Compose file brings up DVGA and scans it in one command
+(shown in the [Quickstart](#quickstart)). Full instructions, including scanning your own target from a
+container, are in [docs/docker.md](docs/docker.md).
 
 ## Output
 
