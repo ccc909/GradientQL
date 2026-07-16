@@ -38,6 +38,11 @@ from .tracer import AgentTracer
 logger = logging.getLogger("gradientql.scanner")
 
 _NOACTION_ABORT = 5
+_NOACTION_RETRIES = 2  # in-step re-prompts before a no-action turn counts toward the abort
+_NOACTION_REMINDER = (
+    "\n\nSYSTEM: your previous reply had no usable action. Reply with EXACTLY ONE JSON object and "
+    "nothing else, of the form {\"thought\": \"<brief>\", \"action\": \"<name>\", \"args\": {...}}. "
+    "Keep the thought short and do not repeat sentences.")
 _LLM_ERROR_ABORT = 8
 _MAX_CIRCUIT_WAITS = 3
 _NOPROBE_CAP = 4
@@ -356,6 +361,22 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         _accumulate_tokens(ctx.tokens, result_msg)
         content = getattr(result_msg, "content", "")
         act = extract_action(content)
+        if act is None:
+            # glm-5.2 occasionally degenerates into repeating a sentence or emitting a thought with
+            # no action. The same prompt state tends to reproduce it, so re-sample with an explicit
+            # format reminder appended; a fresh generation almost always recovers the step.
+            for _ in range(_NOACTION_RETRIES):
+                try:
+                    retry_msg = invoke_with_circuit_breaker(llm, prompt + _NOACTION_REMINDER)
+                except Exception:  # noqa: BLE001
+                    retry_msg = None
+                if retry_msg is None:
+                    continue
+                _accumulate_tokens(ctx.tokens, retry_msg)
+                content = getattr(retry_msg, "content", "")
+                act = extract_action(content)
+                if act is not None:
+                    break
         if tracer is not None:
             pending = {"step": step, "prompt": prompt, "raw_response": content,
                        "action": (act.get("action") if act else None),
