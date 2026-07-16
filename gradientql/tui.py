@@ -477,10 +477,10 @@ class DashboardScreen(Screen):
             with Vertical(id="activity"):
                 yield RichLog(id="activity_log", wrap=True, markup=False, highlight=False, max_lines=500)
                 yield Static("", id="thinking", markup=False)
+                yield Input(placeholder="steer the agent - e.g. 'search for DoS now' - Enter to send", id="steer")
             with VerticalScroll(id="loot_scroll"):
                 yield Static(loot_text(None), id="loot")
         yield DataTable(id="findings")
-        yield Input(placeholder="steer the agent - e.g. 'search for DoS now' - press Enter to send", id="steer")
         yield Footer()
 
     def _set_header(self, status: str, style: str, detail: str) -> None:
@@ -524,7 +524,6 @@ class DashboardScreen(Screen):
         self.query_one("#loot_scroll").border_title = "loot"
         tbl = self.query_one("#findings", DataTable)
         tbl.border_title = "findings"
-        self.query_one("#steer", Input).border_title = "steer the agent"
         tbl.add_columns("score", "finding", "target")
         self._set_header("VERIFYING", "yellow", self.app.target)
         self._start = time.monotonic()
@@ -690,8 +689,7 @@ class GradientQLApp(App):
     #coverage { width: auto; height: auto; }
     #loot { width: auto; height: auto; }
     #findings { height: 9; }
-    #steer { height: 3; border: double $accent;
-             border-title-color: $background; border-title-background: $accent; }
+    #steer { height: 3; border: none; border-top: solid $primary; background: transparent; color: $accent; }
     """
 
     def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:
