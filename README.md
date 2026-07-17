@@ -11,11 +11,11 @@ credential brute-forcing, and denial of service.
 
 <table>
   <tr>
-    <td align="center" width="50%"><a href="docs/menu.svg"><img src="docs/menu.svg" alt="GradientQL menu" width="440"></a><br><sub>Menu: set a target, then start a scan</sub></td>
-    <td align="center" width="50%"><a href="docs/settings.svg"><img src="docs/settings.svg" alt="GradientQL settings" width="440"></a><br><sub>Settings: budget, model, proxy, per-technique attacks</sub></td>
+    <td align="center" width="50%"><a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/menu.svg"><img src="docs/menu.svg" alt="GradientQL menu" width="440"></a><br><sub>Menu: set a target, then start a scan</sub></td>
+    <td align="center" width="50%"><a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/settings.svg"><img src="docs/settings.svg" alt="GradientQL settings" width="440"></a><br><sub>Settings: budget, model, proxy, per-technique attacks</sub></td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><a href="docs/dashboard.svg"><img src="docs/dashboard.svg" alt="GradientQL live dashboard" width="960"></a><br><sub>Live dashboard during a scan: coverage map, activity feed, loot, and findings (illustrative data)</sub></td>
+    <td align="center" colspan="2"><a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/dashboard.svg"><img src="docs/dashboard.svg" alt="GradientQL live dashboard" width="960"></a><br><sub>Live dashboard during a scan: coverage map, activity feed, loot, and findings (illustrative data)</sub></td>
   </tr>
 </table>
 
