@@ -23,8 +23,9 @@ from textual.widgets import (
 
 from .scanner import coverage, memory
 
-GOLD = "#e8a317"
-GOLD_HI = "#ffcf5c"
+GOLD = "#ffb000"      # amber CRT, matched to the results chart
+GOLD_HI = "#ffd070"
+BG_DARK = "#0b0700"
 _LOGO = pathlib.Path(__file__).with_name("assets") / "logo.ans"
 
 _THEME = Theme(
@@ -35,10 +36,10 @@ _THEME = Theme(
     warning=GOLD,
     error="#d75f5f",
     success=GOLD,
-    foreground="#ece0c8",
-    background="#100e0a",
-    surface="#1b1712",
-    panel="#241f17",
+    foreground="#e8cfa0",
+    background=BG_DARK,
+    surface="#171008",
+    panel="#1e1509",
     dark=True,
 )
 
@@ -475,10 +476,11 @@ class DashboardScreen(Screen):
     def _set_header(self, status: str, style: str, detail: str) -> None:
         if not self._alive:
             return
+        # dark text on the amber reverse-video title bar (DOS-style); `style` unused here
         t = Text()
-        t.append("GRADIENTQL  ", style=f"bold {GOLD}")
-        t.append(status, style=style)
-        t.append("  " + detail, style="grey70")
+        t.append("GRADIENTQL  ", style=f"bold {BG_DARK}")
+        t.append(status, style=f"bold {BG_DARK}")
+        t.append("  " + detail, style=BG_DARK)
         self.query_one("#dash_header", Static).update(t)
 
     def _log(self, msg: str, style: str) -> None:
@@ -610,13 +612,31 @@ class GradientQLApp(App):
     TITLE = "GradientQL"
     CSS = """
     Screen { align: left top; }
+
+    /* DOS function-key bar: reverse-video footer */
+    Footer { background: $primary; color: $background; }
+    Footer > .footer-key--key { background: $primary; color: $background; text-style: bold; }
+    Footer > .footer-key--description { background: $primary; color: $background; }
+    FooterKey:hover { background: $accent; color: $background; }
+
+    /* every bordered panel gets a reverse-video DOS title tab */
+    .panel, #menu, #cov_scroll, #activity, #loot_scroll, #findings {
+        border: double $primary;
+        border-title-color: $background; border-title-background: $primary;
+        border-title-align: center; border-subtitle-color: $primary;
+    }
+
     #logo_row { height: auto; }
     #menu_row { height: auto; }
     #logo { width: auto; height: auto; margin: 1 0 0 0; }
-    #menu { width: 66; height: auto; border: double $primary; padding: 1 2; margin-top: 1; }
-    #menu Button { width: 100%; margin-bottom: 1; }
+    #menu { width: 66; height: auto; padding: 1 2; margin-top: 1; }
+    #menu Button { width: 100%; height: 1; margin-bottom: 1; border: none;
+                   background: transparent; color: $primary; text-style: bold; }
+    #menu Button:focus { background: $primary; color: $background; text-style: bold; }
+    #menu Button:hover { color: $accent; }
     #summary { margin-top: 1; color: $text-muted; }
-    #title { text-style: bold; color: $primary; padding: 1 1 0 1; }
+
+    #title { text-style: bold; color: $background; background: $primary; padding: 0 1; }
     #form { height: 1fr; padding: 1 2; }
     #form Label { color: $text-muted; }
     #form Input { margin-bottom: 1; }
@@ -625,20 +645,22 @@ class GradientQLApp(App):
     .switch-label { padding-top: 1; }
     #buttons { height: auto; padding: 1 2; }
     #buttons Button { margin-right: 2; }
-    #dash_header { text-style: bold; color: $primary; padding: 0 1; height: 1; }
+
+    #dash_header { text-style: bold; color: $background; background: $primary; padding: 0 1; height: 1; }
     #statbar { height: 1; padding: 0 1; margin-bottom: 1; }
     #statbar #pbar { width: 28; }
     #statbar #stats { width: 1fr; color: $accent; padding-left: 2; }
     #dash_body { height: 1fr; }
-    #cov_scroll { width: 33%; border: double $primary; padding: 0 1; }
-    #activity { width: 40%; border: double $primary; padding: 0 1;
+    #cov_scroll { width: 33%; padding: 0 1; }
+    #activity { width: 40%; padding: 0 1;
                 background: transparent; scrollbar-size-horizontal: 0; scrollbar-size-vertical: 1;
                 scrollbar-background: $background; scrollbar-color: $primary; }
-    #loot_scroll { width: 27%; border: double $primary; padding: 0 1; }
+    #loot_scroll { width: 27%; padding: 0 1; }
     #coverage { width: auto; height: auto; }
     #loot { width: auto; height: auto; }
-    #findings { height: 9; border: double $primary; }
-    #steer { height: 3; border: double $accent; }
+    #findings { height: 9; }
+    #steer { height: 3; border: double $accent;
+             border-title-color: $background; border-title-background: $accent; }
     """
 
     def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:
