@@ -174,7 +174,7 @@ http:
   proxy: ""            # route traffic through Burp or mitmproxy, e.g. "http://127.0.0.1:8080"
 
 llm:
-  attacker_model: "qwen/qwen3.7-max"
+  attacker_model: "z-ai/glm-5.2"
 ```
 
 `config/settings.yaml` documents every field, and [docs/CONFIGURATION.md](docs/CONFIGURATION.md) is

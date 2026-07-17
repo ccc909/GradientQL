@@ -19,7 +19,7 @@ SIZE = (150, 42)
 DEMO_SETTINGS = {
     "target": {"url": "https://api.example.shop/graphql"},
     "scanner": {"budget": 60, "checkpoint": {"enabled": True, "every": 5}},
-    "llm": {"api_key": "sk-demo", "attacker_model": "qwen/qwen3.7-max", "attacker_max_tokens": 64000},
+    "llm": {"api_key": "sk-demo", "attacker_model": "z-ai/glm-5.2", "attacker_max_tokens": 64000},
     "http": {},
 }
 

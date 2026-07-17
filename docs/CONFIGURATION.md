@@ -23,7 +23,7 @@ http:
 
 llm:
   provider: "openrouter"
-  attacker_model: "qwen/qwen3.7-max"
+  attacker_model: "z-ai/glm-5.2"
 
 scanner:
   budget: 60           # the most steps a scan takes; each step is one model call and at most one request
