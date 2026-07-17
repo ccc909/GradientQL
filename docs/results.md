@@ -67,7 +67,7 @@ exercised because the destructive `dos` technique is off in the default configur
   the cost of depth; qwen and glm trade speed for reach.
 
 These figures reflect the default configuration at a 30-step budget. A larger budget or additional
-enabled techniques would change them (see [A larger-budget run](#a-larger-budget-run) below).
+enabled techniques would change them (see [Larger budgets](#larger-budgets) below).
 
 ## Token usage
 
@@ -78,37 +78,29 @@ carries the full schema and running state each turn. The counts are similar beca
 dominates; the models differ mainly in speed and in the depth of what they find. A scan reports its
 own token count live on the dashboard and in the final report.
 
-## Detection after recent changes
+## Larger budgets
 
-Two categories that scored poorly above improved after later changes to the scanner (described in the
-commit history). Same DVGA setup, glm-5.2, five runs at a 30-step budget:
+To show how coverage scales with budget, glm-5.2 was also run at 60- and 200-step budgets and
+gpt-oss-120b at 200 steps, under the same target conditions otherwise (fresh DVGA per run, default
+attack configuration, `dos` off). Single runs per configuration, so treat them as indicative, not
+as rates.
 
-| Category | Before | After |
-|---|---|---|
-| SQL injection (`pastes.filter`) | 1 / 5 | 4 / 5 |
-| JWT forge / auth bypass (`me(token:)`) | 1 / 5 | 4 / 5 |
+| Model | Budget | Steps used | Findings | Requests | Tokens (in / out) | Wall time |
+|---|---|---|---|---|---|---|
+| `z-ai/glm-5.2` | 30 | 30 | 8 | 19 | 227k / 25k | ~9 min |
+| `z-ai/glm-5.2` | 60 | 60 | 17 | 41 | 565k / 57k | ~19 min |
+| `z-ai/glm-5.2` | 60 | 59 (self-terminated) | 13 | 40 | 534k / 68k | ~17 min |
+| `z-ai/glm-5.2` | 200 | 119 (self-terminated) | **20** | 89 | 1,455k / 123k | ~15 min |
+| `openai/gpt-oss-120b` | 200 | 200 (full budget) | 13 | 89 | 2,242k / 150k | ~28 min |
 
-<img src="detection_improvement.svg" alt="glm-5.2 detection of SQL injection and JWT bypass on DVGA, before and after" width="460">
+The best glm run self-terminated at step 119 with 20 findings and no false positives - its one
+false record was verified and retracted by the model itself. Beyond the usual categories, that run
+used a confirmed command injection to read the target's own source code: it recovered the hardcoded
+`JWT_SECRET_KEY` from `app.py`, and from `views.py` it derived and then proved a JSON-body
+injection (`{"identity": "admin"}` in the raw request body) that unmasks plaintext passwords for
+every user - a vulnerability class that is essentially invisible to a purely black-box scanner.
+Both 200-step runs also showed the loop's guardrails working: batched state-changing mutations were
+rejected before any request was sent, and no scan stalled, looped, or padded its budget.
 
-## A larger-budget run
-
-To show how coverage scales with budget, one run per model was performed with a 200-step budget and
-the `dos` technique enabled; all other parameters matched the setup above.
-
-| Model | Steps used | Findings | Distinct categories |
-|---|---|---|---|
-| `z-ai/glm-5.2` | 104 (self-terminated) | 15 | 9 |
-| `qwen/qwen3.7-max` | 81 (self-terminated) | 10 | 4 |
-| `openai/gpt-oss-120b` | 200 (full budget) | 9 | 6 |
-
-The glm run went deepest: 15 findings across nine categories, including a broken-access-control cluster
-across five fields (unauthenticated `deleteAllPastes`, cross-user read, edit, and delete of private
-pastes, and `users`), OS command injection on two endpoints, SQL injection on two parameters, a forged
-admin JWT via a weak signing secret, blind out-of-band SSRF, and audit-log disclosure. It reached JWT
-forgery and the systematic access-control cluster that the 30-step runs did not. qwen self-terminated
-earlier with 10 findings, adding arbitrary file write / path traversal and an aliases-based denial of
-service. gpt-oss used its whole budget and still found the fewest (9), consistent with the 30-step
-results: fast and cheap, but shallower on the multi-step chains.
-
-These are single, non-deterministic runs, included to show that a larger budget translates into deeper
-coverage rather than to establish a rate.
+Costs are omitted deliberately: per-call provider pricing for the same model varied ~10x across
+these runs on the same day, so only token counts are comparable.

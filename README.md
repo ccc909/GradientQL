@@ -3,11 +3,17 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-e8a317.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 
-GradientQL is a vibe powered GraphQL vulnerability scanner driven by a single language model. You
+GradientQL is an autonomous GraphQL vulnerability scanner driven by a single language model. You
 give it an endpoint and a model API key, and it runs the whole assessment on its own, against a live
 target: it reads the schema, registers and logs into an account when it needs one, and probes for
 access-control flaws, injection, server-side request forgery, JWT forgery, request smuggling, CSRF,
 credential brute-forcing, and denial of service.
+
+It does not replay a payload list - it reasons. The model maps the attack surface, forms hypotheses,
+and chains what it finds into what it tries next. In validation it used a command injection to read
+the target's own source code, recovered a hardcoded JWT secret from it, and derived a second-order
+auth bypass no payload list would have found. It also grades its own work: findings it later
+disproves are retracted, so the report you read at the end is one you can act on.
 
 <table>
   <tr>
@@ -196,17 +202,21 @@ earn one itself through the signup, email confirmation, and login flow using the
 
 ## Evaluation
 
-Against the
+Against a fresh
 [Damn Vulnerable GraphQL Application](https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application)
-(DVGA), the strongest model tested (`z-ai/glm-5.2`) averages 7.4 findings per run at a 30-step
-budget. All three models reliably catch the easy categories (introspection, batch-query denial of
-service, stack-trace leakage) and separate on the auth-gated, multi-step chains, where glm is
-strongest and the fast, cheap `openai/gpt-oss-120b` is shallowest.
+(DVGA) instance - the standard intentionally-vulnerable GraphQL target - with the default attack
+configuration:
 
-<img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="720">
+| Model | Budget | Steps used | Findings | How it went |
+|---|---|---|---|---|
+| `z-ai/glm-5.2` | 200 | 119 (self-terminated) | **20** | used a confirmed RCE to read the target's own source: recovered the hardcoded `JWT_SECRET_KEY`, then found a JSON-body injection that unmasks every user's password |
+| `openai/gpt-oss-120b` | 200 | 200 (full budget) | **13** | methodical identity-matrix work across the whole surface |
 
-Runs are non-deterministic, so these are averages over five runs per model. The full methodology,
-per-category tables, token usage, and a larger-budget run are in [docs/results.md](docs/results.md).
+The glm run's 20 findings include the full BOLA/BFLA cluster (cross-user read, edit, delete, and
+`deleteAllPastes`), two RCE vectors, blind SSRF, SQLi, path traversal, and audit-log disclosure -
+with zero false positives shipped (the model retracted the one it disproved itself). These are
+single runs, so indicative rather than a rate; a five-run benchmark at a 30-step budget, the full
+methodology, and token counts are in [docs/results.md](docs/results.md).
 
 ## Reference
 
