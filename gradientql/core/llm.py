@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger("gradientql.llm")
 
 _circuit_state: dict[str, Any] = {
     "is_open": False,
@@ -47,7 +50,7 @@ def _record_failure() -> None:
     if _circuit_state["failure_count"] >= _CIRCUIT_THRESHOLD:
         _circuit_state["is_open"] = True
         _circuit_state["fallback_active"] = True
-        print(f"[CIRCUIT BREAKER] OPENED after {_CIRCUIT_THRESHOLD} failures. Fallback mode active.")
+        logger.warning("circuit breaker OPENED after %d failures - pausing LLM calls", _CIRCUIT_THRESHOLD)
 
 
 def _record_success() -> None:
@@ -66,7 +69,7 @@ def _should_attempt_reset() -> bool:
         return True
     elapsed = time.time() - _circuit_state["last_failure"]
     if elapsed > _CIRCUIT_TIMEOUT:
-        print(f"[CIRCUIT BREAKER] Attempting reset after {elapsed:.0f}s...")
+        logger.info("circuit breaker attempting reset after %.0fs", elapsed)
         _circuit_state["is_open"] = False
         _circuit_state["failure_count"] = 0
         return True
@@ -180,12 +183,12 @@ def clear_llm_cache() -> None:
 
 def get_attacker_llm(settings: dict[str, Any]) -> ChatOpenAI:
     llm_cfg = settings.get("llm", {})
-    max_tokens = int(llm_cfg.get("attacker_max_tokens", 16384))
+    max_tokens = int(llm_cfg.get("attacker_max_tokens", 16000))
     temperature = float(llm_cfg.get("temperature", 0.7))
     return _get_base_llm(
         settings,
         model_key="attacker_model",
-        default_model="anthropic/claude-opus-4.7",
+        default_model="z-ai/glm-5.2",
         temperature=temperature,
         max_tokens=max_tokens,
     )
@@ -205,7 +208,7 @@ def verify_key(settings: dict[str, Any]) -> tuple[bool, str]:
         return False, "No API key set. Put it in config/api_key.local or the OPENROUTER_API_KEY env var."
     try:
         probe = ChatOpenAI(
-            model=llm_cfg.get("attacker_model", "anthropic/claude-opus-4.7"),
+            model=llm_cfg.get("attacker_model", "z-ai/glm-5.2"),
             api_key=key,
             base_url=llm_cfg.get("base_url", "https://openrouter.ai/api/v1"),
             temperature=0,
@@ -235,7 +238,7 @@ def invoke_with_circuit_breaker(llm: Any, messages: list, **kwargs) -> Any:
     """
     if _circuit_state["is_open"]:
         if not _should_attempt_reset():
-            print(f"[CIRCUIT BREAKER] Circuit OPEN - skipping LLM call ({_circuit_state['failure_count']} failures)")
+            logger.warning("circuit OPEN - skipping LLM call (%d failures)", _circuit_state["failure_count"])
             return None
 
     memo_key = None
@@ -259,9 +262,9 @@ def invoke_with_circuit_breaker(llm: Any, messages: list, **kwargs) -> Any:
         is_timeout = "timeout" in error_str or "timeout" in type(e).__name__.lower()
         _record_failure()
         if is_timeout:
-            print(f"[CIRCUIT BREAKER] LLM call timed out (native timeout): {e}")
+            logger.warning("LLM call timed out (native timeout): %s", e)
         else:
-            print(f"[CIRCUIT BREAKER] LLM call failed: {e}")
+            logger.warning("LLM call failed: %s", e)
         return None
 
 

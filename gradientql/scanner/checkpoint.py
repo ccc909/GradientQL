@@ -35,11 +35,12 @@ def _cfg(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_enabled(settings: dict[str, Any]) -> bool:
-    return bool(_cfg(settings).get("enabled", False))
+    # Default on, matching the shipped config: an interrupted run stays resumable.
+    return bool(_cfg(settings).get("enabled", True))
 
 
 def interval(settings: dict[str, Any]) -> int:
-    return max(1, int(_cfg(settings).get("every", 1)))  # default: snapshot every step
+    return max(1, int(_cfg(settings).get("every", 5)))  # default: snapshot every 5 steps
 
 
 def checkpoint_dir(settings: dict[str, Any]) -> pathlib.Path:

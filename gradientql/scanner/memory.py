@@ -15,6 +15,14 @@ _CLASS_KEYWORDS = {
     "server error / crash": ("server error", "crash", "5xx"),
 }
 
+# A vuln class the scanner can be configured not to test; nudges skip it when its toggle is off.
+_CLASS_TOGGLE = {
+    "injection (SQLi/cmd/SSTI/...)": "injection",
+    "denial-of-service": "dos",
+    "broken access control (BOLA/BFLA/auth)": "bola",
+    "ssrf": "ssrf",
+}
+
 _ARSENAL_TOOLS = ("sweep", "dos", "smuggle", "csrf", "oob_url", "forge_jwt", "temp_mail")
 _ENDPOINT_TOOLS = ("dos", "smuggle", "csrf")
 
@@ -27,9 +35,12 @@ _STATE_SYM = {"finding": "⚠", "exploited": "⚠", "data": "✓", "open": "?", 
 def primary_root_field(query: str) -> str | None:
     """Return the first root field of a GraphQL op, resolving an alias to its field.
 
-    Returns None if no field can be parsed out of `query`.
+    Accepts dotted paths too ("Query.users" -> "users"), as models often write
+    verdicts/targets in that form. Returns None if no field can be parsed out.
     """
     s = query.strip()
+    if re.fullmatch(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)+", s):
+        s = s.rsplit(".", 1)[-1]
     m = re.match(r"(query|mutation|subscription)\b\s*\w*\s*(\([^)]*\))?\s*", s)
     if m:
         s = s[m.end():]
@@ -77,20 +88,22 @@ def effective_state(e: dict[str, Any]) -> str:
         return v
     if a == "DATA":
         return "data"
-    if a in ("AUTH-BLOCKED", "ERROR", "HTTP401", "HTTP403") or a.startswith("HTTP5"):
+    if a in ("AUTH-BLOCKED", "ERROR", "HTTP401", "HTTP403", "RATE-LIMITED") or a.startswith("HTTP5"):
         return "open"
     return "dead" if a else "open"
 
 
-def unconfirmed_classes(vulns: list[dict[str, Any]]) -> list[str]:
-    """Return the vuln classes not represented in `vulns`."""
+def unconfirmed_classes(vulns: list[dict[str, Any]], skip_toggles: set[str] | None = None) -> list[str]:
+    """Return the vuln classes not represented in `vulns`, minus disabled-technique classes."""
+    skip_toggles = skip_toggles or set()
     found: set[str] = set()
     for v in vulns:
         t = str(v.get("vuln_type", "")).lower()
         for cls, kws in _CLASS_KEYWORDS.items():
             if any(k in t for k in kws):
                 found.add(cls)
-    return [c for c in _CLASS_KEYWORDS if c not in found]
+    return [c for c in _CLASS_KEYWORDS
+            if c not in found and _CLASS_TOGGLE.get(c) not in skip_toggles]
 
 
 def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str], n_findings: int,

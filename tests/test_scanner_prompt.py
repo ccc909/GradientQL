@@ -109,3 +109,15 @@ def test_build_prompt_tolerates_missing_decisions(sample_introspection_result):
     del ctx["decisions"]
     p = prompt.build_prompt(ctx)
     assert "nothing yet" in p
+
+
+def test_prompt_drops_config_disabled_actions():
+    # with dos disabled, its bullet must not appear (the model can't use the tool); the
+    # DISABLED note must name it instead so the model doesn't waste a step discovering it
+    sm = {"_query_type": "Query", "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+          "User": {"id": {"args": [], "return_type": "Int", "description": ""}}}
+    p = prompt.build_prompt(_ctx(sm, disabled_tools=["dos"]))
+    assert "\n- dos:" not in p
+    assert "DISABLED by the operator's config" in p and "dos" in p.split("DISABLED", 1)[1]
+    p_all = prompt.build_prompt(_ctx(sm, disabled_tools=[]))
+    assert "\n- dos:" in p_all

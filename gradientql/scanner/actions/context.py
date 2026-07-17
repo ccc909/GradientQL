@@ -22,6 +22,9 @@ class Result:
     is_dead: bool = False
     stop: bool = False
     blocked: bool = False
+    # blocked because the technique is disabled in config, not because the model is stuck;
+    # the loop never counts these toward the blocked-action abort.
+    config_blocked: bool = False
 
 
 @dataclass

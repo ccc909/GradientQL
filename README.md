@@ -32,8 +32,10 @@ removes duplicate findings, and prints a report.
 The middle step is where the work happens. The model drives: on each turn it is given a compressed
 view of the situation (the schema, a summary of what it has already tried, the facts it has
 recorded, and any credentials or tokens it has harvested) and replies with one JSON action. A run is
-measured in **steps**, and each step is one model call and at most one request; the `budget` caps how
-many a scan takes.
+measured in **steps**: each step is one model call plus the action it chooses. Most actions make at
+most one request to the target; the battery actions fan out further - `sweep` and a full `fuzz`
+ladder fire up to about 16 requests in a single step, `auth_test` one per identity. The `budget`
+caps how many steps a scan takes.
 
 ```json
 {"thought": "...", "action": "sweep", "args": {}, "learned": "optional note", "verdict": {}}
@@ -67,9 +69,11 @@ OPENROUTER_API_KEY=sk-... docker compose -f docker/docker-compose.yml up --build
 pip install -e ".[dev]"
 ```
 
-This pulls in the machine-learning stack (FAISS, sentence-transformers, and PyTorch) that the scanner
-uses for schema search; the Docker path needs none of it. You need Python 3.10 or newer and an API
-key for a model on [OpenRouter](https://openrouter.ai).
+You need Python 3.10 or newer and an API key for a model on [OpenRouter](https://openrouter.ai). For
+semantic schema search on large schemas (80+ fields), also install the `semantic` extra
+(`pip install -e ".[dev,semantic]"`), which pulls FAISS, sentence-transformers, and CPU PyTorch;
+without it the scanner falls back to lexical schema search and loses nothing else. The Docker image
+already includes the `semantic` extra.
 
 **Set your key and run** against an endpoint you are authorized to test:
 
@@ -106,6 +110,8 @@ attached.
 | `--settings PATH` | Path to the settings file. Defaults to `config/settings.yaml`. |
 | `--trace [PATH]` | Record every step to a `.jsonl` log and a matching `.md` digest (see [Output](#output)). Bare `--trace` writes `output/agent_trace_<timestamp>.*`; pass a path or prefix to write elsewhere. |
 | `-v`, `--verbose` | Print each step's full, untruncated thought and observations to the console (plain-log mode). |
+| `--resume RUN_ID` | Resume a previous run from its last checkpoint (a run id like `gql-...` or a checkpoint file path; see `output/checkpoints/`). |
+| `--max-tokens N` | Override the model's max output tokens per step (`llm.attacker_max_tokens`). |
 | `--tui` | Force the interactive interface. Falls back to plain logs when no terminal is attached. |
 | `--no-tui` | Force plain log output even in an interactive terminal. |
 | `-h`, `--help` | Show usage and exit. |
@@ -134,7 +140,9 @@ The interface is keyboard- and mouse-driven; the active keys show in the footer.
 
 - **Menu**: `s` starts a scan, `g` opens settings, `q` quits.
 - **Settings and attacks**: edit the fields and switches; the Attacks button opens the per-technique
-  toggles. `Esc` (or Back) saves and returns, and changes apply to the next scan.
+  toggles. `Esc` (or Back) saves and returns: changes apply to the next scan and are written back to
+  the settings file (the API key is never persisted - it stays in the environment or
+  `config/api_key.local`).
 - **Dashboard**: opens when a scan starts and updates in place. `Esc` stops the scan and returns to
   the menu.
 
@@ -161,7 +169,8 @@ most:
 
 ```yaml
 scanner:
-  budget: 60           # the most steps a scan takes; each step is one model call and at most one request
+  budget: 60           # the most steps a scan takes; one model call per step (battery actions
+                       # like sweep/fuzz fire several requests within a step)
   safe_mode: false     # one switch to disable the destructive techniques
   attacks:             # turn individual techniques on or off
     injection: true
@@ -215,6 +224,9 @@ Everything the scanner writes goes under `output/`, which is ignored by git:
 - `agent_trace_<timestamp>.jsonl` and the matching `.md` file, written when `--trace` is on. Each
   step records the exact prompt sent to the model, the raw reply, the parsed action, the
   observation fed back in, and a snapshot of the state. The `.md` file is the readable version.
+  Both contain the full prompts - including any credentials and tokens harvested during the run -
+  and checkpoints under `output/checkpoints/` store the run's identity headers and credentials.
+  Treat all of these as secrets: don't attach them to bug reports or commit them anywhere.
 - `vuln_stream.jsonl`, which holds the findings. They are written as they are confirmed, so a
   crash partway through a run does not lose them.
 

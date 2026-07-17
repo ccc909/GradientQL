@@ -79,6 +79,12 @@ def main(settings_path: str | None = None, target_url: str | None = None,
                      "config/api_key.local, or set llm.api_key in the settings file.", api_key_env)
         sys.exit(1)
 
+    from ..core.llm import verify_key
+    ok, key_msg = verify_key(settings)
+    if not ok:
+        logger.error("%s", key_msg)
+        sys.exit(1)
+
     from . import checkpoint as _cp
     resume_data: dict[str, Any] | None = None
     if resume:
@@ -101,6 +107,11 @@ def main(settings_path: str | None = None, target_url: str | None = None,
     if not url:
         logger.error("No target URL. Set target.url in settings or pass --url.")
         sys.exit(1)
+    from ..core.config import PLACEHOLDER_URL
+    if url.strip() == PLACEHOLDER_URL:
+        logger.error("Target is still the placeholder %s - set target.url in config/settings.yaml "
+                     "or pass --url to an endpoint you are authorized to test.", PLACEHOLDER_URL)
+        sys.exit(1)
 
     logger.info("Target: %s", url)
     logger.info("Budget: %d steps", int(settings.get("scanner", {}).get("budget", 60)))
@@ -119,7 +130,7 @@ def main(settings_path: str | None = None, target_url: str | None = None,
             logger.warning("Interrupted. Resume this run with:  gradientql --resume %s", run_id)
         elif _cp.is_enabled(settings):
             logger.warning("Interrupted before the first checkpoint was written - nothing to resume.")
-        raise
+        sys.exit(130)
 
 
 def cli() -> None:
@@ -156,8 +167,10 @@ def cli() -> None:
         from ..tui import launch
         launch(settings_path=args.settings, target_url=args.url, trace=args.trace, verbose=args.verbose)
         return
-    main(settings_path=args.settings, target_url=args.url, trace=args.trace, verbose=args.verbose,
-         resume=args.resume, max_tokens=args.max_tokens)
+    result = main(settings_path=args.settings, target_url=args.url, trace=args.trace,
+                  verbose=args.verbose, resume=args.resume, max_tokens=args.max_tokens)
+    if isinstance(result, dict) and result.get("error"):
+        sys.exit(2)
 
 
 if __name__ == "__main__":

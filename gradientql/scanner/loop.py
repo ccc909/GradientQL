@@ -15,7 +15,7 @@ from ..core.llm import (
 )
 from ..utils.graphql_client import get_client
 from ..utils.reporter import append_vuln_retraction, append_vuln_stream
-from .actions import ActionContext, Result, dispatch
+from .actions import ActionContext, Result, disabled_actions, disabled_toggles, dispatch
 from .memory import (
     _ARSENAL_TOOLS,
     _ENDPOINT_TOOLS,
@@ -189,6 +189,8 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
 
     nudge_every = settings.get("scanner", {}).get("tuning", {}).get(
         "coverage_nudge_every", _COVERAGE_NUDGE_EVERY)
+    disabled = disabled_actions(settings)
+    skip_toggles = disabled_toggles(settings)
 
     recent_actions: list[str] = []
     recent_targets: list[str] = []
@@ -304,16 +306,17 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             nudge.append(f"(optional) fields that echoed your input - `fuzz` ONLY if the field looks like it "
                          f"renders/interpolates input, otherwise ignore: {', '.join(echoed[:5])}")
         if noprobe_streak >= 2 and not degraded:
-            nudge.append(f"You've taken {noprobe_streak} recon/no-probe actions in a row - search & notes "
-                         f"DON'T make progress. SEND A REQUEST now (graphql/fuzz/sweep) to actually test something.")
+            nudge.append(f"You've taken {noprobe_streak} actions in a row that sent NO request to the "
+                         f"target - notes/search/identity setup DON'T make progress. SEND A REQUEST "
+                         f"now (graphql/fuzz/sweep) to actually test something.")
         if step % nudge_every == 0 and not degraded:
             uhv = untested_high_value_fields(schema_map, ctx.ledger)
             if uhv and (budget - step) > 2:
                 nudge.append(f"(reminder) high-value fields not yet probed: {', '.join(uhv[:6])}")
-            missing = unconfirmed_classes(ctx.vulns)
+            missing = unconfirmed_classes(ctx.vulns, skip_toggles)
             if missing and (budget - step) > 2:
                 nudge.append("(reminder) untested vuln classes: " + "; ".join(missing[:4]))
-            unused_tools = [t for t in _ENDPOINT_TOOLS if t not in techniques_used]
+            unused_tools = [t for t in _ENDPOINT_TOOLS if t not in techniques_used and t not in disabled]
             if unused_tools and (budget - step) > 2:
                 nudge.append(f"(reminder) endpoint-level tools not yet run: {', '.join(unused_tools)}")
             sqli_args = unfuzzed_string_args(schema_map, ctx._fuzz_seen)
@@ -342,7 +345,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             "covered": ctx.covered, "credentials": ctx.credentials, "facts": ctx.facts,
             "searched": ctx.searched, "findings": len(ctx.vulns), "vulns": ctx.vulns, "ledger": ctx.ledger,
             "notes": ctx.notes, "history": ctx.history, "decisions": ctx.decisions,
-            "fixation": fixation, "steering": active_steer,
+            "fixation": fixation, "steering": active_steer, "disabled_tools": sorted(disabled),
         })
 
         llm_error: str | None = None
@@ -448,7 +451,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 ctx.decisions.append(_decision_line(step, "done", args, thought,
                                                     "DEFERRED - target unresponsive; backing off, not stopping"))
                 continue
-            unused = [t for t in _ENDPOINT_TOOLS if t not in techniques_used]
+            unused = [t for t in _ENDPOINT_TOOLS if t not in techniques_used and t not in disabled]
             if unused and (budget - step) > 3 and done_deferrals < _DONE_DEFERRALS:
                 done_deferrals += 1
                 recent_actions[-1] = "deferred"
@@ -502,17 +505,20 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 logger.info("    ↳ %s", ln[:600])
         if res.touched_target:
             consecutive_dead = consecutive_dead + 1 if res.is_dead else 0
-        if name in _NONPROBE_ACTIONS:
-            noprobe_streak += 1
-        elif not (res.blocked or res.is_dead):
+            if not res.is_dead:
+                backoffs = 0  # target answered normally again - clear the degraded sleep ladder
+        if res.touched_target and not res.is_dead:
             noprobe_streak = 0
             blocked_recon = 0
+        else:
+            noprobe_streak += 1
         if res.blocked:
             recent_actions[-1] = "blocked"
-            consec_blocked += 1
-            if consec_blocked >= _NOACTION_ABORT:
-                logger.warning("AGENT aborting: %d actions blocked in a row (model won't pivot)", consec_blocked)
-                break
+            if not res.config_blocked:  # disabled-by-config rejects are guidance, not model stubbornness
+                consec_blocked += 1
+                if consec_blocked >= _NOACTION_ABORT:
+                    logger.warning("AGENT aborting: %d actions blocked in a row (model won't pivot)", consec_blocked)
+                    break
         else:
             consec_blocked = 0
 

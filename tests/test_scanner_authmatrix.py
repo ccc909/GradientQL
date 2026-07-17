@@ -166,3 +166,51 @@ def test_batch_brute_refuses_destructive_template():
     ctx = _ctx(_IdentityClient(lambda h: {"data": {}, "errors": [], "_status_code": 200}), {})
     res = dispatch("batch_brute", ctx, {"template": 'deleteUser(id:"{V}")', "values": ["1", "2"]})
     assert "REFUSED" in res.observation and ctx.vulns == []
+
+
+def test_auth_test_records_bfla_when_sensitive_field_open_to_everyone():
+    # the textbook BFLA: a sensitive field returns real data to anon AND to a customer token
+    # (nothing blocked - it's just open). The old rule needed a blocked identity and missed it.
+    sm = _sm({"deleteCustomer": {"args": [], "return_type": "T", "description": ""}})
+
+    def fn(h):
+        return {"data": {"deleteCustomer": {"customer": {"email": "victim@x.io", "name": "V"}}},
+                "errors": [], "_status_code": 200}
+
+    ctx = _ctx(_IdentityClient(fn), sm, identity={"Authorization": "Bearer cust"})
+    dispatch("auth_test", ctx, {"query": "mutation { deleteCustomer(id: 2) { customer { email } } }"})
+    assert any("Broken Function-Level Authorization" in v["vuln_type"] for v in ctx.vulns)
+
+
+def test_batch_brute_escapes_quotes_in_values():
+    # a candidate containing a double quote must not break the batched query string
+    sent = []
+
+    class _C:
+        session = None
+
+        def execute(self, query, variables=None, extra_headers=None):
+            sent.append(query)
+            return {"data": {"b0": None, "b1": None}, "errors": [], "_status_code": 200}
+
+    ctx = _ctx(_C(), _sm({"login": {"args": [], "return_type": "T", "description": ""}}))
+    dispatch("batch_brute", ctx, {"template": 'login(user:"admin", password:"{V}") { token }',
+                                  "values": ['pa"ss', 'x\y']})
+    assert '\\"' in sent[0] and 'pa\\"ss' in sent[0]
+    assert "x\\\\y" in sent[0]  # single backslash in the value must be doubled in the query
+
+
+def test_batch_brute_partial_processing_is_not_a_bypass():
+    # only 2 of 3 aliases came back - an alias cap/validation reject proves nothing about rate
+    # limits, so no bypass finding may be recorded
+    class _C:
+        session = None
+
+        def execute(self, query, variables=None, extra_headers=None):
+            return {"data": {"b0": None, "b1": None}, "errors": [], "_status_code": 200}
+
+    ctx = _ctx(_C(), _sm({"login": {"args": [], "return_type": "T", "description": ""}}))
+    res = dispatch("batch_brute", ctx, {"template": 'login(user:"a", password:"{V}") { token }',
+                                        "values": ["1", "2", "3"]})
+    assert "BYPASSED" not in res.observation
+    assert not any("Rate-Limit Bypass" in v["vuln_type"] for v in ctx.vulns)

@@ -148,3 +148,11 @@ def test_render_state_tried_table_marks_overflow_past_20():
               for i in range(25)}
     s = memory.render_state(ledger, [], [], 0, total_root=25)
     assert "(+5 more fields in ledger" in s
+
+
+def test_primary_root_field_accepts_dotted_paths():
+    # models often write verdicts as "Query.users" - the ledger key must be "users"
+    from gradientql.scanner.memory import primary_root_field
+    assert primary_root_field("Query.users") == "users"
+    assert primary_root_field("Mutation.deletePaste") == "deletePaste"
+    assert primary_root_field("me") == "me"

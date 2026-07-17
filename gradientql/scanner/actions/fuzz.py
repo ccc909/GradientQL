@@ -160,15 +160,6 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
     cap = ctx.settings.get("scanner", {}).get("fuzz", {}).get("max_payloads", _MAX_PAYLOADS)
     payloads = payloads[:cap]
 
-    sent_counts: dict[str, int] = {}
-    for cls, _ in payloads:
-        if cls == "custom":
-            continue
-        sent_counts[cls] = sent_counts.get(cls, 0) + 1
-    for cls, cnt in sent_counts.items():
-        key = (field, arg, path, cls)
-        ctx._fuzz_seen[key] = ctx._fuzz_seen.get(key, 0) + cnt
-
     if "ssrf" in requested and ctx.oob_sess is not None:
         try:
             url, _label = ctx.oob_sess.issue({"approach": "fuzz", "node": label})
@@ -193,12 +184,26 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
     results: list[dict] = []
     confirmed: list[tuple[str, str, str]] = []
     has_ssrf = any(cls == "ssrf" for cls, _ in payloads)
+    sent_counts: dict[str, int] = {}
+    consec_dead_sends = 0
+    aborted = False
 
     for cls, payload in payloads:
         resp = _send(ctx, op, field, arg, var_type, sel, payload, path, base_input)
         ctx.trace_io(f"{op} {{ {field}({arg}: {payload!r}) }}", {"p": payload}, resp, label=f"fuzz:{label}")
         dead = is_dead(resp.get("_status_code", 0))
         status = resp.get("_status_code", 0)
+        if status == 0:
+            consec_dead_sends += 1
+            if consec_dead_sends >= 3:
+                aborted = True
+                results.append({"cls": cls, "payload": payload, "tags": ["target-unreachable"],
+                                "status": 0, "snip": "battery aborted - 3 dead responses in a row"})
+                break
+        else:
+            consec_dead_sends = 0
+            if cls != "custom":  # only answered payloads count toward the sent ladder
+                sent_counts[cls] = sent_counts.get(cls, 0) + 1
         data = resp.get("data")
         errs = resp.get("errors") or []
         blob = json.dumps(data, default=str) if data else ""
@@ -224,6 +229,12 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
         snip = (str(errs[0].get("message", ""))[:90] if errs
                 else (blob[:90] if "changed" in tags or "reflected" in tags else ""))
         results.append({"cls": cls, "payload": payload, "tags": tags, "status": status, "snip": snip})
+
+    # Mark the ladder position only for payloads the target actually answered, so a
+    # mid-battery outage doesn't burn probes that never reached the resolver.
+    for cls, cnt in sent_counts.items():
+        key = (field, arg, path, cls)
+        ctx._fuzz_seen[key] = ctx._fuzz_seen.get(key, 0) + cnt
 
     for vt, payload, reason in confirmed:
         ctx.record(vt, label, f"payload={payload!r}; {reason}", 3.0)
@@ -258,6 +269,9 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
                     + "\n  ".join(_line(r) for r in results))
     ssrf_note = ("  [ssrf: OOB URL injected - run `oob_url op:check` in a few steps to confirm blind SSRF]"
                  if has_ssrf else "")
+    if aborted:
+        ssrf_note += ("  [BATTERY ABORTED - target stopped answering (3 dead responses in a row); "
+                      "the un-sent payloads were NOT burned - re-fuzz after it recovers]")
     fully_dropped: list[str] = []
     partial: list[tuple[str, int, int]] = []
     for cls in known:

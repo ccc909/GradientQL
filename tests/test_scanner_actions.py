@@ -463,7 +463,8 @@ def test_dos_records_on_accept():
     # the handler aliases a REAL data-returning field from the ledger (not zero-cost __typename)
     client = MockClient(default={"data": {"a0": [{"id": 1}]}, "errors": [], "_status_code": 200})
     sm = {"_query_type": "Query", "Query": {"users": {"args": [], "return_type": "UserConn", "description": ""}}}
-    ctx = make_ctx(client, schema_map=sm)
+    ctx = make_ctx(client, schema_map=sm,
+                   settings={"target": {}, "scanner": {"attacks": {"dos": True}}})
     from gradientql.scanner.memory import blank_entry
     ctx.ledger["users"] = {**blank_entry("users", "anon", 0), "auto": "DATA"}
     res = dispatch("dos", ctx, {"type": "aliases"})
@@ -494,7 +495,8 @@ def test_dos_forwards_identity():
     # an authenticated overload must carry ctx.identity, not be sent anonymously
     client = MockClient(default={"data": {"a0": [{"id": 1}]}, "errors": [], "_status_code": 200})
     sm = {"_query_type": "Query", "Query": {"users": {"args": [], "return_type": "UserConn", "description": ""}}}
-    ctx = make_ctx(client, schema_map=sm)
+    ctx = make_ctx(client, schema_map=sm,
+                   settings={"target": {}, "scanner": {"attacks": {"dos": True}}})
     ctx.identity["Authorization"] = "Bearer tok"
     dispatch("dos", ctx, {"type": "aliases"})
     assert client.calls and client.calls[-1][2].get("Authorization") == "Bearer tok"
@@ -654,3 +656,68 @@ def test_csrf_honest(monkeypatch):
     monkeypatch.setattr(requests, "post", lambda *a, **k: _Resp(200, "{}", {}))
     res = dispatch("csrf", make_ctx(schema_map={"_mutation_type": "Mutation", "Mutation": {}}), {})
     assert "GET-exec" in res.observation
+
+
+def test_disabled_actions_defaults_and_safe_mode():
+    # dos defaults OFF with no config (matches the shipped settings.yaml); safe_mode offs the
+    # destructive trio regardless
+    from gradientql.scanner.actions import disabled_actions
+    assert disabled_actions({}) == {"dos"}
+    assert disabled_actions({"scanner": {"attacks": {"dos": True}}}) == set()
+    assert {"dos", "smuggle", "batch_brute"} <= disabled_actions(
+        {"scanner": {"safe_mode": True, "attacks": {"dos": True}}})
+
+
+def test_forge_jwt_weak_secret_tries_dictionary(monkeypatch):
+    # approach weak_secret with no explicit secret must work through the common-secret list in
+    # ONE action (was: only "secret" was ever tried) and stop at the first acceptance
+    from gradientql.scanner.actions import dispatch
+    from gradientql.utils import jwt_attacks
+    monkeypatch.setattr(jwt_attacks.time, "time", lambda: 1700000000)  # deterministic iat/exp
+    monkeypatch.setattr(jwt_attacks, "WEAK_SECRETS", ("zzz", "opensesame", "third"))
+    accepted = jwt_attacks.forge_hs256("opensesame", jwt_attacks._escalated({}))
+
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"me": {"args": [{"name": "token", "type": "String"}], "return_type": "User",
+                           "description": ""}},
+          "User": {"id": {"args": [], "return_type": "Int", "description": ""}},
+          "Mutation": {}}
+
+    class _JWTMock:
+        session = None
+
+        def execute(self, query, variables=None, extra_headers=None):
+            if accepted in query:
+                return {"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200}
+            return {"data": {"me": None}, "errors": [{"message": "invalid token"}], "_status_code": 200}
+
+    ctx = make_ctx(_JWTMock(), schema_map=sm)
+    res = dispatch("forge_jwt", ctx, {"approach": "weak_secret"})
+    assert "weak-secret WIN" in res.observation and "opensesame" in res.observation
+    assert any("hs256:opensesame" in v["vuln_type"] for v in ctx.vulns)
+    assert len(ctx.harvested["forged_jwt"]) == 2  # stopped at the first acceptance, not all 3
+
+
+def test_forge_jwt_weak_secret_dictionary_all_rejected(monkeypatch):
+    from gradientql.scanner.actions import dispatch
+    from gradientql.utils import jwt_attacks
+    monkeypatch.setattr(jwt_attacks.time, "time", lambda: 1700000000)
+    monkeypatch.setattr(jwt_attacks, "WEAK_SECRETS", ("aaa", "bbb"))
+
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"me": {"args": [{"name": "token", "type": "String"}], "return_type": "User",
+                           "description": ""}},
+          "User": {"id": {"args": [], "return_type": "Int", "description": ""}},
+          "Mutation": {}}
+
+    class _RejectAll:
+        session = None
+
+        def execute(self, query, variables=None, extra_headers=None):
+            return {"data": {"me": None}, "errors": [{"message": "invalid token"}], "_status_code": 200}
+
+    ctx = make_ctx(_RejectAll(), schema_map=sm)
+    res = dispatch("forge_jwt", ctx, {"approach": "weak_secret"})
+    assert "none of the 2 common secrets" in res.observation
+    assert ctx.vulns == []
+    assert len(ctx.harvested["forged_jwt"]) == 2

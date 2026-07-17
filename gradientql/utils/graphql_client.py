@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger("gradientql.graphql_client")
 
@@ -375,11 +374,6 @@ class GraphQLClient:
             if not init_success:
                 self._session_initialized = False
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
     def execute(
         self,
         query: str,
