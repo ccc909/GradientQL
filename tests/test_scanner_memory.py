@@ -168,6 +168,9 @@ def test_apply_self_report_rejects_intent_facts_banks_results():
     assert facts == [] and "NOT banked" in out
     out = apply_self_report({"learned": "I need to check the audits field"}, ledger, facts, "anon", 1)
     assert facts == [] and "NOT banked" in out
+    out = apply_self_report({"learned": "Attempting login with stored credentials to harvest a token"},
+                            ledger, facts, "anon", 1)
+    assert facts == [] and "NOT banked" in out
     out = apply_self_report({"learned": "me(token) masks passwords for legit tokens"},
                             ledger, facts, "anon", 1)
     assert facts == ["me(token) masks passwords for legit tokens"] and "banked fact" in out

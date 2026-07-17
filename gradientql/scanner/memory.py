@@ -180,7 +180,8 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
 _INTENT_PREFIXES = (
     "testing", "trying", "test ", "try ", "starting", "to test", "to check", "checking",
     "i need", "need to", "let me", "i will", "i'll", "going to", "plan to", "next",
-    "time to", "i should", "now i", "i'm going",
+    "time to", "i should", "now i", "i'm going", "attempting", "attempt to", "about to",
+    "planning", "aiming", "want to", "let's",
 )
 
 
