@@ -146,10 +146,12 @@ def _get_base_llm(settings: dict[str, Any], model_key: str, default_model: str,
     if cache_key in _llm_cache:
         return _llm_cache[cache_key]
 
-    extra_body: dict[str, Any] = {}
+    # Ask OpenRouter to return exact cost accounting and native token counts on every response,
+    # so the run's dollar figure is the provider's own number rather than absent or estimated.
+    extra_body: dict[str, Any] = {"usage": {"include": True}}
     if provider_routing:
         extra_body["provider"] = provider_routing
-    extra_kwargs: dict[str, Any] = {"extra_body": extra_body} if extra_body else {}
+    extra_kwargs: dict[str, Any] = {"extra_body": extra_body}
 
     llm = ChatOpenAI(
         model=model_name,
