@@ -156,3 +156,22 @@ def test_primary_root_field_accepts_dotted_paths():
     assert primary_root_field("Query.users") == "users"
     assert primary_root_field("Mutation.deletePaste") == "deletePaste"
     assert primary_root_field("me") == "me"
+
+
+def test_apply_self_report_rejects_intent_facts_banks_results():
+    # plans are not facts: an intention gets bounced with a correction the model sees,
+    # a confirmed outcome gets banked
+    from gradientql.scanner.memory import apply_self_report
+    ledger: dict = {}
+    facts: list = []
+    out = apply_self_report({"learned": "Testing me(token) for a bypass"}, ledger, facts, "anon", 1)
+    assert facts == [] and "NOT banked" in out
+    out = apply_self_report({"learned": "I need to check the audits field"}, ledger, facts, "anon", 1)
+    assert facts == [] and "NOT banked" in out
+    out = apply_self_report({"learned": "me(token) masks passwords for legit tokens"},
+                            ledger, facts, "anon", 1)
+    assert facts == ["me(token) masks passwords for legit tokens"] and "banked fact" in out
+    # a fact that merely CONTAINS an intent verb is fine - only leading phrasing is rejected
+    out = apply_self_report({"learned": "systemDiagnostics checks the password against the DB first"},
+                            ledger, facts, "anon", 2)
+    assert "banked fact" in out

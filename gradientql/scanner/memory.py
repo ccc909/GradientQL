@@ -173,6 +173,22 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
     return cov + "\n" + sr + ot + kn + tried
 
 
+# `learned` facts are long-term memory; plans are not facts. A fact phrased as an intention
+# ("Testing X...", "I need to check...") describes what the model is ABOUT to do - it can't stop
+# a repeat later, because it records no outcome. Rejected at the door with a correction the
+# model sees in its next observation.
+_INTENT_PREFIXES = (
+    "testing", "trying", "test ", "try ", "starting", "to test", "to check", "checking",
+    "i need", "need to", "let me", "i will", "i'll", "going to", "plan to", "next",
+    "time to", "i should", "now i", "i'm going",
+)
+
+
+def _is_intent(fact: str) -> bool:
+    low = fact.strip().lower()
+    return any(low.startswith(p) for p in _INTENT_PREFIXES)
+
+
 def apply_self_report(action: dict[str, Any], ledger: dict[str, dict], facts: list[str],
                       idlabel: str, step: int) -> str:
     """Fold an action's optional `learned`/`verdict` into the ledger and facts.
@@ -184,7 +200,11 @@ def apply_self_report(action: dict[str, Any], ledger: dict[str, dict], facts: li
     learned = action.get("learned")
     if isinstance(learned, str) and learned.strip():
         f = learned.strip()[:200]
-        if f not in facts:
+        if _is_intent(f):
+            bits.append(f'NOT banked (a plan, not a result): "{f[:50]}" - `learned` is for what a '
+                        'response SHOWED (e.g. "me(token) masks passwords"), not for what you '
+                        'intend to do next')
+        elif f not in facts:
             facts.append(f)
             bits.append(f'banked fact: "{f[:60]}"')
     v = action.get("verdict")
