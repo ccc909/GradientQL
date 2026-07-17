@@ -191,6 +191,18 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         "coverage_nudge_every", _COVERAGE_NUDGE_EVERY)
     disabled = disabled_actions(settings)
     skip_toggles = disabled_toggles(settings)
+    nudge_counts: dict[str, int] = {}
+
+    def _remind(key: str, text: str, cap: int = 2) -> None:
+        """Append a periodic reminder, firing each distinct kind at most `cap` times per run.
+
+        A reminder the model has already seen and ignored twice is noise (and prompt bloat);
+        state-driven nudges (degraded/fixation/no-probe) don't go through here.
+        """
+        if nudge_counts.get(key, 0) >= cap:
+            return
+        nudge_counts[key] = nudge_counts.get(key, 0) + 1
+        nudge.append(text)
 
     recent_actions: list[str] = []
     recent_targets: list[str] = []
@@ -312,30 +324,30 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         if step % nudge_every == 0 and not degraded:
             uhv = untested_high_value_fields(schema_map, ctx.ledger)
             if uhv and (budget - step) > 2:
-                nudge.append(f"(reminder) high-value fields not yet probed: {', '.join(uhv[:6])}")
+                _remind("hv", f"(reminder) high-value fields not yet probed: {', '.join(uhv[:6])}")
             missing = unconfirmed_classes(ctx.vulns, skip_toggles)
             if missing and (budget - step) > 2:
-                nudge.append("(reminder) untested vuln classes: " + "; ".join(missing[:4]))
+                _remind("classes", "(reminder) untested vuln classes: " + "; ".join(missing[:4]))
             unused_tools = [t for t in _ENDPOINT_TOOLS if t not in techniques_used and t not in disabled]
             if unused_tools and (budget - step) > 2:
-                nudge.append(f"(reminder) endpoint-level tools not yet run: {', '.join(unused_tools)}")
+                _remind("tools", f"(reminder) endpoint-level tools not yet run: {', '.join(unused_tools)}")
             sqli_args = unfuzzed_string_args(schema_map, ctx._fuzz_seen)
             if sqli_args and (budget - step) > 2:
-                nudge.append("(reminder) string args NOT yet SQLi-fuzzed - a filter/search/id/title arg on a "
-                             "data-returning query is a classic SQLi sink even when the field 'works' on a "
-                             "normal read; don't clear it by the field NAME. fuzz classes:['sqli']: "
-                             + ", ".join(sqli_args))
+                _remind("sqli", "(reminder) string args NOT yet SQLi-fuzzed - a filter/search/id/title arg "
+                        "on a data-returning query is a classic SQLi sink even when the field 'works' on a "
+                        "normal read; don't clear it by the field NAME. fuzz classes:['sqli']: "
+                        + ", ".join(sqli_args))
             tok_fields = token_arg_fields(schema_map)
             if tok_fields and (budget - step) > 2:
                 have_tok = bool(ctx.harvested.get("forged_jwt") or ctx.harvested.get("jwt"))
                 verbatim = (" You already have a forged/captured token - paste it VERBATIM into the field arg "
                             "(an alg:none JWT ends in a trailing '.', keep it; dropping a segment gives "
                             "'Not enough segments')." if have_tok else "")
-                nudge.append("(reminder) field(s) taking a token/jwt arg: " + ", ".join(tok_fields)
-                             + " - a JWT can be read from a FIELD ARGUMENT, not just the Authorization "
-                             "header. Pass a captured/forged token INTO the field via graphql (forge_jwt "
-                             "approach:'none' if you have none; register an account to seed a token if login fails)."
-                             + verbatim)
+                _remind("token", "(reminder) field(s) taking a token/jwt arg: " + ", ".join(tok_fields)
+                        + " - a JWT can be read from a FIELD ARGUMENT, not just the Authorization "
+                        "header. Pass a captured/forged token INTO the field via graphql (forge_jwt "
+                        "approach:'none' if you have none; register an account to seed a token if login fails)."
+                        + verbatim)
         fixation = "  ".join(nudge)
 
         prompt = build_prompt({

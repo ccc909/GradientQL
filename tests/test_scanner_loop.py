@@ -373,3 +373,31 @@ def test_backoff_ladder_resets_after_target_recovers(monkeypatch):
               "User": {"id": {"args": [], "return_type": "Int", "description": ""}}},
              "http://t/graphql", 6)
     assert sleeps[:2] == [8, 8]  # second dead spell starts the ladder over, not at 13
+
+
+def test_periodic_reminders_are_capped(monkeypatch):
+    # with smuggle/csrf enabled but never used, the "endpoint tools not yet run" reminder would
+    # fire every nudge cycle forever (observed: 8x in a 60-step run, ignored 8x) - cap it at 2
+    monkeypatch.setattr(loop.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
+    import gradientql.utils.oob as oobmod
+    monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
+    client = MockClient(default={"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200})
+    monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: client)
+    prompts: list[str] = []
+    actions = [{"action": "graphql", "args": {"query": f"query {{ a{i}: me {{ id }} }}"}}
+               for i in range(20)]
+    base = scripted_llm(actions)
+
+    def capture(llm, p, **k):
+        prompts.append(p)
+        return base(llm, p, **k)
+
+    monkeypatch.setattr(loop, "invoke_with_circuit_breaker", capture)
+    loop.run({"target": {}, "scanner": {}},
+             {"_query_type": "Query",
+              "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+              "User": {"id": {"args": [], "return_type": "Int", "description": ""}}},
+             "http://t/graphql", 20)
+    fired = sum("endpoint-level tools not yet run" in p for p in prompts)
+    assert 0 < fired <= 2

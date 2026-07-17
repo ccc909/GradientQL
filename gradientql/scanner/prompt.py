@@ -31,6 +31,8 @@ below - never invent a new one, or the login fails and the chain dies. If signup
 CONFIRMATION before login, use temp_mail: register with the disposable address, read the mail, then
 EITHER call confirmEmail with the key, OR if confirmation is a LINK (the common case), `visit` it to
 activate - THEN log in. That unlocks authenticated BOLA/IDOR.
+Do NOT burn steps single-guessing credentials (admin/admin one login at a time) - credential
+guessing is what `batch_brute` with a dictionary is for: one action, many guesses.
 BUT FIRST CHECK KNOWN: if it says this schema has NO token-minting mutation, auth is OUT-OF-BAND
 (REST/OIDC) - do NOT waste steps hunting a GraphQL login/register; focus on the unauth surface.
 
@@ -101,6 +103,8 @@ HIGH-VALUE TARGETS for THIS schema - where real findings live; DO NOT finish wit
 YOUR RUN LOG - every action you've taken, in order, WITH your own reasoning («…»). This is your
 memory of what you've already tried and concluded: if a field/credential/identity already failed
 here, do NOT repeat it - build on it or pivot. Don't re-derive what you already worked out.
+(Older steps are compacted - thoughts stripped, repeats merged (xN) - so nothing you tried is
+forgotten; KNOWN and the MAP hold the durable conclusions.)
 {decisions}
 
 RECENT ACTIONS + OBSERVATIONS (raw, last few - full response detail):
@@ -112,7 +116,9 @@ FINDINGS YOU'VE RECORDED (retract any you later DISPROVE - by id - so false posi
 You STEER YOURSELF. Nothing forces you off a field - but the MAP shows what's already dead, so
 don't waste budget re-running it. As you learn, SCORE what you see by attaching either/both of
 these OPTIONAL keys to ANY action (they update YOUR map, they are not separate turns):
-  "learned": "<a durable fact, e.g. 'new accounts need email confirmation -> self-reg login dead'>"
+  "learned": "<a durable RESULT you confirmed, e.g. 'signup needs email confirmation' or
+    'me(token) masks passwords for legit tokens' - a fact you LEARNED from a response, never a
+    plan or intention ('testing X' is not a fact and helps no one)>"
   "verdict": {{"field": "<root field>", "state": "dead"|"open"|"exploited", "why": "<short>", "confidence": 0.0-1.0}}
   "retract": {{"id": "<the fN id from FINDINGS YOU'VE RECORDED>", "why": "<what disproved it>"}}
 Mark a vector "dead" when you're done with it and "open" when it's worth another angle (e.g. retry
@@ -217,6 +223,45 @@ def _render_actions_doc(disabled: set[str]) -> str:
     return doc
 
 
+_DECISIONS_FULL_WINDOW = 40   # most-recent steps kept verbatim (thoughts included)
+_DECISIONS_COMPACT_CAP = 40   # cap on compacted lines for older steps
+
+
+def _decision_key(line: str) -> str:
+    """The '<name> <target>' identity of a decision line, used to merge repeat runs."""
+    m = re.match(r"\[\d+\] (\S+)( [^ →]+)?", line)
+    return (m.group(1) + (m.group(2) or "")) if m else line[:40]
+
+
+def _render_decisions(decisions: list[str]) -> str:
+    """Render the run log, compacting older steps instead of dropping them.
+
+    The most recent _DECISIONS_FULL_WINDOW lines stay verbatim (thoughts included). Older
+    lines lose their «thought» and consecutive repeats of the same action+target merge into
+    one line with an (xN) count, so the model keeps full knowledge of what it already tried
+    without re-reading every word. If even the compacted form overflows its cap, the oldest
+    lines are dropped with an explicit marker - nothing is silently truncated.
+    """
+    if not decisions:
+        return "(nothing yet)"
+    if len(decisions) <= _DECISIONS_FULL_WINDOW:
+        return "\n".join(decisions)
+    old, recent = decisions[:-_DECISIONS_FULL_WINDOW], decisions[-_DECISIONS_FULL_WINDOW:]
+    merged: list[list] = []
+    for ln in old:
+        head = ln.split("  «", 1)[0].strip()
+        if merged and _decision_key(head) == _decision_key(merged[-1][0]):
+            merged[-1] = (head, merged[-1][1] + 1)
+        else:
+            merged.append((head, 1))
+    lines = [h if n == 1 else f"{h} (x{n})" for h, n in merged]
+    dropped = len(lines) - _DECISIONS_COMPACT_CAP
+    if dropped > 0:
+        lines = [f"(... {dropped} earliest compacted line(s) dropped - KNOWN + the MAP hold "
+                 "their state)"] + lines[dropped:]
+    return "\n".join(lines + ["— recent steps, verbatim —"] + recent)
+
+
 def build_prompt(ctx: dict[str, Any]) -> str:
     sm = ctx["schema_map"]
     overview = ctx.get("schema_overview") or render_schema_overview(sm)
@@ -248,8 +293,7 @@ def build_prompt(ctx: dict[str, Any]) -> str:
         fix = f"\n  ⚠ {ctx['fixation']}"
     hist = "\n".join(ctx["history"][-18:]) or "(none yet)"
     notes = "\n".join(f"- {n}" for n in ctx["notes"][-25:]) or "(empty)"
-    log_window = min(int(ctx.get("budget") or 60), 120)
-    decisions = "\n".join((ctx.get("decisions") or [])[-log_window:]) or "(nothing yet)"
+    decisions = _render_decisions(ctx.get("decisions") or [])
     recorded = "\n".join(f"  [{v.get('id', '?')}] {v.get('vuln_type')} on {v.get('target_node')}"
                          for v in (ctx.get("vulns") or [])) or "  (none yet)"
     return _SYSTEM.format(

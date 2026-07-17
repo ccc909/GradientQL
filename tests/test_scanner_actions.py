@@ -721,3 +721,15 @@ def test_forge_jwt_weak_secret_dictionary_all_rejected(monkeypatch):
     assert "none of the 2 common secrets" in res.observation
     assert ctx.vulns == []
     assert len(ctx.harvested["forged_jwt"]) == 2
+
+
+def test_graphql_notes_typename_only_reprobe():
+    # a __typename-only query on an already-probed field earns a "nothing new" note
+    client = MockClient(responses={
+        "real:": {"data": {"real": {"id": 1}}, "errors": [], "_status_code": 200},
+        "tn:": {"data": {"tn": {"__typename": "User"}}, "errors": [], "_status_code": 200},
+    })
+    ctx = make_ctx(client)
+    dispatch("graphql", ctx, {"query": "query { real: me { id } }"})
+    res = dispatch("graphql", ctx, {"query": "query { tn: me { __typename } }"})
+    assert "nothing new" in res.observation

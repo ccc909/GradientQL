@@ -70,25 +70,28 @@ def test_build_prompt_renders_full_run_log(sample_introspection_result):
 
 
 def test_build_prompt_windows_long_run_log(sample_introspection_result):
-    # the run log is the one section that grew with budget; it is now tail-windowed so a very long
-    # run drops only the oldest lines while keeping the recent reasoning chain
+    # the run log no longer drops older steps outright: they are compacted (thoughts stripped,
+    # repeats merged) while the recent window stays verbatim
     sm = parse_schema(sample_introspection_result)
     decisions = [f"[{i}] graphql f{i} → null/empty  «trying field {i}»" for i in range(80)]
     p = prompt.build_prompt(_ctx(sm, decisions=decisions))
-    assert "[0] graphql f0" not in p    # oldest beyond the window dropped
-    assert "[20] graphql f20" in p      # last 60 retained
-    assert "[79] graphql f79" in p      # newest present
+    assert "[0] graphql f0" in p           # oldest compacted, not dropped
+    assert "«trying field 0»" not in p     # ... but its thought is stripped
+    assert "— recent steps, verbatim —" in p
+    assert "«trying field 79»" in p        # recent window keeps thoughts
+    assert "[79] graphql f79" in p
 
 
-def test_build_prompt_run_log_window_scales_with_budget(sample_introspection_result):
-    # on a long-budget profile (DVGA budget=250) the window grows past the default 60 up to the
-    # 120-line cap, so far more of the run log reaches the model than the old flat 60
+def test_build_prompt_run_log_compaction_drops_oldest_with_marker(sample_introspection_result):
+    # when even the compacted older segment overflows its cap, the earliest lines drop WITH a
+    # marker (nothing is silently truncated) and the recent window stays complete
     sm = parse_schema(sample_introspection_result)
     decisions = [f"[{i}] graphql f{i} → null/empty  «trying field {i}»" for i in range(200)]
-    p = prompt.build_prompt(_ctx(sm, decisions=decisions, budget=250))
-    assert "[80] graphql f80" in p       # inside the 120-line budget-scaled window
+    p = prompt.build_prompt(_ctx(sm, decisions=decisions))
     assert "[199] graphql f199" in p     # newest present
-    assert "[70] graphql f70" not in p   # window is capped at 120, so oldest still drop
+    assert "[0] graphql f0" not in p     # earliest dropped after compaction...
+    assert "earliest compacted line(s) dropped" in p  # ... explicitly, not silently
+    assert "[150] graphql f150" in p     # recent compacted lines survive
 
 
 def test_build_prompt_lists_recorded_findings_with_ids(sample_introspection_result):
@@ -121,3 +124,30 @@ def test_prompt_drops_config_disabled_actions():
     assert "DISABLED by the operator's config" in p and "dos" in p.split("DISABLED", 1)[1]
     p_all = prompt.build_prompt(_ctx(sm, disabled_tools=[]))
     assert "\n- dos:" in p_all
+
+
+def test_render_decisions_compacts_old_steps():
+    from gradientql.scanner.prompt import _render_decisions
+    lines = ["[0] sweep → 4 DATA  «t0»", "[1] sweep → 4 DATA  «t1»",
+             "[2] sweep → 4 DATA  «t2»"]
+    lines += [f"[{i}] graphql me → DATA x1  «thought{i}»" for i in range(3, 60)]
+    out = _render_decisions(lines)
+    assert "— recent steps, verbatim —" in out
+    assert "«thought59»" in out          # recent window keeps thoughts
+    assert "«thought10»" not in out      # older steps lose theirs
+    assert "sweep → 4 DATA (x3)" in out  # consecutive repeats merge with a count
+    assert "graphql me → DATA x1" in out  # knowledge is compacted, not dropped
+
+
+def test_render_decisions_short_passthrough():
+    from gradientql.scanner.prompt import _render_decisions
+    assert _render_decisions(["[0] done → STOP  «x»"]) == "[0] done → STOP  «x»"
+    assert _render_decisions([]) == "(nothing yet)"
+
+
+def test_prompt_teaches_results_not_intent_for_learned():
+    sm = {"_query_type": "Query", "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+          "User": {"id": {"args": [], "return_type": "Int", "description": ""}}}
+    p = " ".join(prompt.build_prompt(_ctx(sm)).split())  # normalize line wraps
+    assert "never a plan or intention" in p
+    assert "batch_brute` with a dictionary" in p  # no single-guess logins
