@@ -9,10 +9,11 @@ The scanner was evaluated against the
 ## Setup
 
 Three models were each run five times (n = 5 per model). Every run introspected a freshly
-restarted DVGA instance and executed under a per-run budget of 30 steps (one model call and at most
-one request per step) with the default attack configuration. Every finding was mapped to DVGA's
-published set of 21 named vulnerabilities and aggregated across the five runs. The model makes every
-decision, so runs are non-deterministic and differ from one another.
+restarted DVGA instance and executed under a per-run budget of 30 steps (one model call per step;
+most actions make one request, battery actions up to ~16) with the default attack configuration.
+Every finding was mapped to DVGA's published set of 21 named vulnerabilities and aggregated across
+the five runs. The model makes every decision, so runs are non-deterministic and differ from one
+another.
 
 | Parameter | Value |
 |---|---|

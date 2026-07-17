@@ -149,3 +149,13 @@ def test_operation_failed_detects_self_reported_failure():
 def test_is_dead():
     assert senses.is_dead(0) and senses.is_dead(None) and senses.is_dead(503)
     assert not senses.is_dead(200) and not senses.is_dead(404)
+
+
+def test_429_is_rate_limited_not_empty_and_counts_as_unresponsive():
+    # a 429 must read as RATE-LIMITED (never as a null/empty "dead" field) and must feed the
+    # loop's degraded-target backoff via is_dead
+    from gradientql.scanner.senses import classify_outcome, is_dead
+    from gradientql.scanner.memory import effective_state
+    assert is_dead(429) is True
+    assert classify_outcome(429, None, []) == "RATE-LIMITED"
+    assert effective_state({"auto": "RATE-LIMITED", "attempts": 1}) == "open"

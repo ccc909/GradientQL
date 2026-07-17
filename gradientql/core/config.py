@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+logger = logging.getLogger("gradientql.config")
+
 # config/ next to the installed package (editable install / repo checkout), and next to the
 # working directory (a plain `pip install`, or the Docker image's WORKDIR).
 _CONFIG_DIRS = (Path(__file__).resolve().parent.parent.parent / "config", Path.cwd() / "config")
 
 _SHARED_KEY_FILE = "api_key.local"
+
+# The placeholder target shipped in the settings template; never a real scan target.
+PLACEHOLDER_URL = "https://your-target.example/graphql"
 
 
 def _read_shared_api_key() -> str:
@@ -25,6 +31,15 @@ def _read_shared_api_key() -> str:
         except OSError:
             continue
     return ""
+
+
+def default_settings_path() -> Path:
+    """The settings file the TUI persists edits to: the first existing default, else cwd's."""
+    for d in _CONFIG_DIRS:
+        cand = d / "settings.yaml"
+        if cand.is_file():
+            return cand
+    return _CONFIG_DIRS[-1] / "settings.yaml"
 
 
 def load_settings(path: str | Path | None = None) -> dict[str, Any]:
@@ -48,6 +63,8 @@ def load_settings(path: str | Path | None = None) -> dict[str, Any]:
         if path is not None:
             raise FileNotFoundError(f"settings file not found: {path}")
         settings = {}  # no config file anywhere; every key falls back to a built-in default
+        logger.info("No config/settings.yaml found - using built-in defaults (budget 60, model "
+                    "z-ai/glm-5.2). Copy config/settings.yaml from the repo to customize.")
     settings = settings or {}
 
     llm_cfg = settings.setdefault("llm", {})

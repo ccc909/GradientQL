@@ -19,7 +19,7 @@ COPY pyproject.toml README.md ./
 COPY gradientql ./gradientql
 COPY config ./config
 
-RUN pip install --no-cache-dir . && gradientql --help >/dev/null
+RUN pip install --no-cache-dir ".[semantic]" && gradientql --help >/dev/null
 
 ENV PYTHONUNBUFFERED=1
 VOLUME ["/app/output"]

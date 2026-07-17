@@ -15,6 +15,14 @@ _CLASS_KEYWORDS = {
     "server error / crash": ("server error", "crash", "5xx"),
 }
 
+# A vuln class the scanner can be configured not to test; nudges skip it when its toggle is off.
+_CLASS_TOGGLE = {
+    "injection (SQLi/cmd/SSTI/...)": "injection",
+    "denial-of-service": "dos",
+    "broken access control (BOLA/BFLA/auth)": "bola",
+    "ssrf": "ssrf",
+}
+
 _ARSENAL_TOOLS = ("sweep", "dos", "smuggle", "csrf", "oob_url", "forge_jwt", "temp_mail")
 _ENDPOINT_TOOLS = ("dos", "smuggle", "csrf")
 
@@ -27,9 +35,12 @@ _STATE_SYM = {"finding": "⚠", "exploited": "⚠", "data": "✓", "open": "?", 
 def primary_root_field(query: str) -> str | None:
     """Return the first root field of a GraphQL op, resolving an alias to its field.
 
-    Returns None if no field can be parsed out of `query`.
+    Accepts dotted paths too ("Query.users" -> "users"), as models often write
+    verdicts/targets in that form. Returns None if no field can be parsed out.
     """
     s = query.strip()
+    if re.fullmatch(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)+", s):
+        s = s.rsplit(".", 1)[-1]
     m = re.match(r"(query|mutation|subscription)\b\s*\w*\s*(\([^)]*\))?\s*", s)
     if m:
         s = s[m.end():]
@@ -77,20 +88,22 @@ def effective_state(e: dict[str, Any]) -> str:
         return v
     if a == "DATA":
         return "data"
-    if a in ("AUTH-BLOCKED", "ERROR", "HTTP401", "HTTP403") or a.startswith("HTTP5"):
+    if a in ("AUTH-BLOCKED", "ERROR", "HTTP401", "HTTP403", "RATE-LIMITED") or a.startswith("HTTP5"):
         return "open"
     return "dead" if a else "open"
 
 
-def unconfirmed_classes(vulns: list[dict[str, Any]]) -> list[str]:
-    """Return the vuln classes not represented in `vulns`."""
+def unconfirmed_classes(vulns: list[dict[str, Any]], skip_toggles: set[str] | None = None) -> list[str]:
+    """Return the vuln classes not represented in `vulns`, minus disabled-technique classes."""
+    skip_toggles = skip_toggles or set()
     found: set[str] = set()
     for v in vulns:
         t = str(v.get("vuln_type", "")).lower()
         for cls, kws in _CLASS_KEYWORDS.items():
             if any(k in t for k in kws):
                 found.add(cls)
-    return [c for c in _CLASS_KEYWORDS if c not in found]
+    return [c for c in _CLASS_KEYWORDS
+            if c not in found and _CLASS_TOGGLE.get(c) not in skip_toggles]
 
 
 def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str], n_findings: int,
@@ -160,6 +173,23 @@ def render_state(ledger: dict[str, dict], facts: list[str], searched: list[str],
     return cov + "\n" + sr + ot + kn + tried
 
 
+# `learned` facts are long-term memory; plans are not facts. A fact phrased as an intention
+# ("Testing X...", "I need to check...") describes what the model is ABOUT to do - it can't stop
+# a repeat later, because it records no outcome. Rejected at the door with a correction the
+# model sees in its next observation.
+_INTENT_PREFIXES = (
+    "testing", "trying", "test ", "try ", "starting", "to test", "to check", "checking",
+    "i need", "need to", "let me", "i will", "i'll", "going to", "plan to", "next",
+    "time to", "i should", "now i", "i'm going", "attempting", "attempt to", "about to",
+    "planning", "aiming", "want to", "let's",
+)
+
+
+def _is_intent(fact: str) -> bool:
+    low = fact.strip().lower()
+    return any(low.startswith(p) for p in _INTENT_PREFIXES)
+
+
 def apply_self_report(action: dict[str, Any], ledger: dict[str, dict], facts: list[str],
                       idlabel: str, step: int) -> str:
     """Fold an action's optional `learned`/`verdict` into the ledger and facts.
@@ -171,7 +201,11 @@ def apply_self_report(action: dict[str, Any], ledger: dict[str, dict], facts: li
     learned = action.get("learned")
     if isinstance(learned, str) and learned.strip():
         f = learned.strip()[:200]
-        if f not in facts:
+        if _is_intent(f):
+            bits.append(f'NOT banked (a plan, not a result): "{f[:50]}" - `learned` is for what a '
+                        'response SHOWED (e.g. "me(token) masks passwords"), not for what you '
+                        'intend to do next')
+        elif f not in facts:
             facts.append(f)
             bits.append(f'banked fact: "{f[:60]}"')
     v = action.get("verdict")

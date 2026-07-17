@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 from . import action
 from .context import ActionContext, Result
@@ -119,6 +120,15 @@ def _decode_response_tokens(text: str) -> str:
             break
     return ("⚠ TOKEN in response decoded - judge if it's a by-design public client token "
             "(merchant/clientApiUrl present) or a real secret worth chasing: " + " || ".join(seen)) if seen else ""
+
+
+def _typename_only(val: Any) -> bool:
+    """True if a response value carries only __typename (a reachability check, no data)."""
+    if isinstance(val, dict):
+        return bool(val) and set(val.keys()) == {"__typename"}
+    if isinstance(val, list):
+        return bool(val) and all(_typename_only(v) for v in val)
+    return False
 
 
 def _mutation_batch_count(query: str) -> int:
@@ -236,6 +246,11 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
         obs_bits.append("⚠ BATCHED MUTATION: you ran 2+ state-changing fields in one request - if any "
                         "errors, the whole result is ENTANGLED and you can't trust the others. For an "
                         "auth-sensitive/destructive mutation, send it ALONE (or use auth_test).")
+    if (led["attempts"] > 1 and isinstance(data, dict) and data
+            and all(_typename_only(v) for v in data.values())):
+        obs_bits.append(f"note: `{pf}` was already probed (x{led['attempts']}) and a bare "
+                        "__typename tells you nothing new - select the REAL fields you need "
+                        "(search_schema the return type if unsure), or move on.")
     if fresh:
         obs_bits.append("HARVESTED " + ", ".join(fresh[:4]))
     if cred_is_new:

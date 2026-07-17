@@ -111,7 +111,8 @@ def test_done_deferred_until_deferrals_exhausted(patch_loop):
     actions = [{"action": "done", "args": {"reason": "x"}},
                {"action": "dos", "args": {"type": "aliases"}},
                {"action": "done", "args": {"reason": "x"}}]
-    res = patch_loop(actions, client, budget=20)
+    res = patch_loop(actions, client, settings={"target": {}, "scanner": {"attacks": {"dos": True}}},
+                     budget=20)
     assert res["steps"] == 4               # done deferred twice, honoured on the 3rd
     assert any("Denial of Service" in v["vuln_type"] for v in res["vulnerabilities"])
 
@@ -312,3 +313,91 @@ def test_degraded_target_does_not_quit_early(patch_loop):
                {"action": "done", "args": {"reason": "give up"}}]
     res = patch_loop(actions, client, budget=10)
     assert res["steps"] > 3                # it kept going past the premature 'done'
+
+
+def test_noprobe_streak_counts_non_request_actions(monkeypatch):
+    # set_identity sends no request, so it must feed the no-probe streak, not reset it:
+    # two in a row brings out the "SEND A REQUEST" nudge (was: any non-search/note action
+    # reset the streak to 0, so setup-spam evaded the backstop forever)
+    monkeypatch.setattr(loop.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
+    import gradientql.utils.oob as oobmod
+    monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
+    client = MockClient(default={"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200})
+    monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: client)
+    prompts: list[str] = []
+    base = scripted_llm([{"action": "set_identity", "args": {"headers": {"X-Test": "y"}}}])
+
+    def capture(llm, p, **k):
+        prompts.append(p)
+        return base(llm, p, **k)
+
+    monkeypatch.setattr(loop, "invoke_with_circuit_breaker", capture)
+    loop.run({"target": {}, "scanner": {}},
+             {"_query_type": "Query",
+              "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+              "User": {"id": {"args": [], "return_type": "Int", "description": ""}}},
+             "http://t/graphql", 5)
+    assert any("sent NO request" in p for p in prompts)
+
+
+def test_config_blocked_actions_never_abort(patch_loop):
+    # a model hammering a config-disabled tool gets rejected every time, but those rejects
+    # are config_blocked - they must NOT count toward the 5-blocked-actions abort
+    res = patch_loop([{"action": "dos", "args": {"type": "aliases"}}], MockClient(), budget=8)
+    assert res["steps"] == 8
+
+
+def test_backoff_ladder_resets_after_target_recovers(monkeypatch):
+    # after a dead spell the sleep ladder grows (8s, 13s, ...); a successful response must
+    # reset it, so a target that recovers doesn't leave the run sleeping 25s/step forever
+    sleeps: list[float] = []
+    monkeypatch.setattr(loop.time, "sleep", lambda s, *a, **k: sleeps.append(s))
+    monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
+    import gradientql.utils.oob as oobmod
+    monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
+    dead = {"data": None, "errors": [], "_status_code": 500}
+    ok = {"data": {"ok": {"id": 1}}, "errors": [], "_status_code": 200}
+    client = MockClient(responses={"d1:": dead, "d2:": dead, "ok:": ok, "d3:": dead, "d4:": dead,
+                                   "d5:": dead})
+    monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: client)
+    actions = [{"action": "graphql", "args": {"query": "query { d1: me { id } }"}},
+               {"action": "graphql", "args": {"query": "query { d2: me { id } }"}},
+               {"action": "graphql", "args": {"query": "query { ok: me { id } }"}},
+               {"action": "graphql", "args": {"query": "query { d3: me { id } }"}},
+               {"action": "graphql", "args": {"query": "query { d4: me { id } }"}},
+               {"action": "graphql", "args": {"query": "query { d5: me { id } }"}}]
+    monkeypatch.setattr(loop, "invoke_with_circuit_breaker", scripted_llm(actions))
+    loop.run({"target": {}, "scanner": {}},
+             {"_query_type": "Query", "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+              "User": {"id": {"args": [], "return_type": "Int", "description": ""}}},
+             "http://t/graphql", 6)
+    assert sleeps[:2] == [8, 8]  # second dead spell starts the ladder over, not at 13
+
+
+def test_periodic_reminders_are_capped(monkeypatch):
+    # with smuggle/csrf enabled but never used, the "endpoint tools not yet run" reminder would
+    # fire every nudge cycle forever (observed: 8x in a 60-step run, ignored 8x) - cap it at 2
+    monkeypatch.setattr(loop.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
+    import gradientql.utils.oob as oobmod
+    monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
+    client = MockClient(default={"data": {"me": {"id": 1}}, "errors": [], "_status_code": 200})
+    monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: client)
+    prompts: list[str] = []
+    actions = [{"action": "graphql", "args": {"query": f"query {{ a{i}: me {{ id }} }}"}}
+               for i in range(20)]
+    base = scripted_llm(actions)
+
+    def capture(llm, p, **k):
+        prompts.append(p)
+        return base(llm, p, **k)
+
+    monkeypatch.setattr(loop, "invoke_with_circuit_breaker", capture)
+    loop.run({"target": {}, "scanner": {}},
+             {"_query_type": "Query",
+              "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+              "User": {"id": {"args": [], "return_type": "Int", "description": ""}}},
+             "http://t/graphql", 20)
+    fired = sum("endpoint-level tools not yet run" in p for p in prompts)
+    assert 0 < fired <= 2

@@ -90,10 +90,11 @@ def handle_auth_test(ctx: ActionContext, args: dict) -> Result:
 
     if (pf in bfla_sensitive_fields(ctx.schema_map)
             and by_label.get("anon") == "DATA"
-            and not _is_ack(raw.get("anon"))
-            and any(o in _BLOCKED for o in authed_outcomes)):
+            and not _is_ack(raw.get("anon"))):
+        blocked_note = (" while an authed identity is blocked" if any(o in _BLOCKED for o in authed_outcomes)
+                        else "")
         if ctx.record("Broken Function-Level Authorization (sensitive field reachable unauthenticated)",
-                      pf, f"`{pf}` returned DATA with NO authentication while an authed identity is blocked - "
+                      pf, f"`{pf}` returned DATA with NO authentication{blocked_note} - "
                       + "; ".join(f"{lbl}={o}" for lbl, o, _ in rows), 3.0):
             finding_type = "Broken Function-Level Authorization"
 
@@ -154,7 +155,13 @@ def handle_batch_brute(ctx: ActionContext, args: dict) -> Result:
                "login/verify/token field, or send a single destructive op via graphql if intended.")
         ctx.log(f"[{ctx.step}] {msg}")
         return Result(observation=msg)
-    parts = " ".join(f"b{i}: {template.replace('{V}', v)}" for i, v in enumerate(values))
+
+    def _sub(v: str) -> str:
+        # values land inside the template's quotes; escape so a quote/backslash in a
+        # candidate can't break the whole batched query.
+        return v.replace("\\", "\\\\").replace('"', '\\"')
+
+    parts = " ".join(f"b{i}: {template.replace('{V}', _sub(v))}" for i, v in enumerate(values))
     query = f"{op} {{ {parts} }}"
     try:
         resp = ctx.client.execute(query, None, extra_headers=ctx.identity or None)
@@ -174,7 +181,9 @@ def handle_batch_brute(ctx: ActionContext, args: dict) -> Result:
     hits = [values[int(k[1:])] for k in alias_in_data if data.get(k)]
     limited = any(m in json.dumps(errs, default=str).lower()
                   for m in ("too many", "rate limit", "rate-limit", "throttl", "locked", "slow down"))
-    bypass = processed >= 2 and status == 200 and not limited
+    # A clean bypass means the server ran EVERY alias; a partial pass means some were
+    # rejected (alias cap, validation) and proves nothing about rate limits.
+    bypass = processed == len(values) and len(values) >= 2 and status == 200 and not limited
     if bypass:
         ctx.record("Rate-Limit Bypass via Field Aliasing (batched brute-force)", template[:40],
                    f"{processed}/{len(values)} aliased attempts processed in ONE request with no "

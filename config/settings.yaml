@@ -44,7 +44,8 @@ llm:
     memoize_responses: false
 
 scanner:
-  budget: 60           # max steps; each step is one model call and at most one request
+  budget: 60           # max steps; one model call per step - most actions make 1 request,
+                       # battery actions (sweep/fuzz/auth_test) fire up to ~16 within a step
   # trace: true        # write output/agent_trace_<ts>.{jsonl,md}; the --trace flag does the same
   # verbose: true      # untruncated console thoughts; the -v flag does the same
   checkpoint:          # auto-save resumable snapshots so a long run survives a stall or Ctrl-C

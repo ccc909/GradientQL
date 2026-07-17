@@ -53,10 +53,22 @@ def prevalidate_query(query: str, variables: dict[str, Any], schema_map: dict[st
         return None
 
     ops = [d for d in doc.definitions if isinstance(d, gast.OperationDefinitionNode)]
-    if len(ops) != 1:
+    if len(ops) > 1:
+        return ("PRE-VALIDATION (no request sent): your document has "
+                f"{len(ops)} operations - servers reject multi-operation documents, and mixing "
+                "reads and writes entangles the outcomes. Send ONE operation per request.")
+    if not ops:
         return None
     op = ops[0]
     op_type = getattr(op.operation, "value", str(op.operation)).lower()
+    if op_type == "mutation" and op.selection_set is not None:
+        n_mut_fields = sum(1 for s in op.selection_set.selections
+                       if isinstance(s, gast.FieldNode))
+        if n_mut_fields >= 2:
+            return ("PRE-VALIDATION (no request sent): you batched "
+                    f"{n_mut_fields} state-changing fields in one mutation - if any errors, "
+                    "every result is ENTANGLED and untrustworthy. Send each state-changing "
+                    "mutation ALONE (or use auth_test, which isolates them).")
     if op_type == "query":
         root_type = schema_map.get("_query_type", "Query")
     elif op_type == "mutation":

@@ -23,6 +23,7 @@ from textual.widgets import (
     Button, DataTable, Footer, Input, Label, ProgressBar, RichLog, Static, Switch,
 )
 
+from .core.config import PLACEHOLDER_URL
 from .scanner import coverage, memory
 
 GOLD = "#ffb000"      # amber CRT, matched to the results chart
@@ -207,6 +208,23 @@ def _has_key(settings: dict[str, Any]) -> bool:
     return bool(os.environ.get(llm.get("api_key_env", "OPENROUTER_API_KEY")))
 
 
+def _persist_settings(settings: dict[str, Any], path: Any) -> None:
+    """Write the (in-memory) settings back to YAML, minus the resolved API key.
+
+    The key is never persisted here: it may have come from the environment or the
+    gitignored api_key.local, and baking it into settings.yaml would leak it.
+    """
+    import yaml
+    clean = copy.deepcopy(settings)
+    clean.get("llm", {}).pop("api_key", None)
+    header = ("# Written by the GradientQL TUI settings screen - inline comments from the "
+              "template are not preserved.\n")
+    os.makedirs(os.path.dirname(str(path)) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(header)
+        yaml.safe_dump(clean, f, sort_keys=False, default_flow_style=False)
+
+
 class MenuScreen(Screen):
     BINDINGS = [("s", "start", "Start scan"), ("r", "resume", "Resume last"),
                 ("g", "settings", "Settings"), ("q", "quit", "Quit")]
@@ -267,8 +285,13 @@ class MenuScreen(Screen):
             self.notify("A scan is still finishing. Try again in a moment.", severity="warning")
             return
         s = self.app.settings
-        if not s.get("target", {}).get("url", "").strip():
+        url = s.get("target", {}).get("url", "").strip()
+        if not url:
             self.notify("Set a target in Settings first.", severity="warning")
+            self.app.push_screen(SettingsScreen())
+        elif url == PLACEHOLDER_URL:
+            self.notify("Target is still the placeholder - set a real endpoint in Settings.",
+                        severity="warning")
             self.app.push_screen(SettingsScreen())
         elif not _has_key(s):
             env = s.get("llm", {}).get("api_key_env", "OPENROUTER_API_KEY")
@@ -414,6 +437,10 @@ class SettingsScreen(Screen):
             yield Button("Back", id="back", variant="primary")
         yield Footer()
 
+    def on_mount(self) -> None:
+        # snapshot so _save only rewrites the YAML when the operator actually changed something
+        self._before = copy.deepcopy(self.app.settings)
+
     @staticmethod
     def _get(s: dict, sect: str, key: str, dflt: Any) -> Any:
         node = s.get(sect, {})
@@ -453,6 +480,15 @@ class SettingsScreen(Screen):
             self._set(sect, key, val)
         for wid, _l, sect, key, _d in self._SWITCHES:
             self._set(sect, key, self.query_one(f"#s_{wid}", Switch).value)
+        path = getattr(self.app, "settings_path", None)
+        before = getattr(self, "_before", None)
+        if path and before != self.app.settings:
+            try:
+                _persist_settings(self.app.settings, path)
+            except OSError as e:
+                self.notify(f"settings not saved to {path}: {e}", severity="warning")
+            else:
+                self.notify(f"settings saved to {path}", timeout=2)
 
     def action_back(self) -> None:
         self._save()
@@ -839,10 +875,12 @@ class GradientQLApp(App):
             border-title-align: center; border-subtitle-color: $primary; }
     """
 
-    def __init__(self, settings: dict[str, Any], target: str | None = None) -> None:
+    def __init__(self, settings: dict[str, Any], target: str | None = None,
+                 settings_path: Any = None) -> None:
         super().__init__()
         self.settings = settings
         self.target = target or (settings.get("target", {}).get("url") or "")
+        self.settings_path = settings_path
         self.result: dict[str, Any] | None = None
         self.scan_active = False
 
@@ -856,7 +894,7 @@ def launch(settings_path: str | None = None, target_url: str | None = None,
            trace: Any = None, verbose: bool = False) -> dict[str, Any] | None:
     import warnings
 
-    from .core.config import load_settings
+    from .core.config import default_settings_path, load_settings
     from .utils.logger import setup_logging
 
     warnings.filterwarnings("ignore")
@@ -868,6 +906,7 @@ def launch(settings_path: str | None = None, target_url: str | None = None,
         settings.setdefault("scanner", {})["verbose"] = True
     if target_url:
         settings.setdefault("target", {})["url"] = target_url
-    app = GradientQLApp(settings, target_url)
+    persist_to = settings_path if settings_path else default_settings_path()
+    app = GradientQLApp(settings, target_url, settings_path=persist_to)
     app.run()
     return app.result

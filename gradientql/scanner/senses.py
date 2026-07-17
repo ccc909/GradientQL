@@ -244,8 +244,12 @@ _FAIL_MSG_KEYS = ("error_message", "errormessage", "error", "message")
 
 
 def is_dead(status: Any) -> bool:
-    """Return True if the HTTP status marks the endpoint dead (0/None or 5xx)."""
-    return status in (0, None) or (isinstance(status, int) and status >= 500)
+    """Return True if the HTTP status marks the endpoint unresponsive (0/None, 429, or 5xx).
+
+    429 counts: a rate-limited endpoint is telling the scanner to back off, and the
+    loop's degraded-target backoff is the mechanism that does that.
+    """
+    return status in (0, None, 429) or (isinstance(status, int) and status >= 500)
 
 
 def empty_response(data: Any) -> bool:
@@ -283,6 +287,8 @@ def classify_outcome(status: Any, data: Any, errors: list[Any]) -> str:
         return "LOGIN-FAILED"
     if any(m in estr for m in _AUTH_ERR_MARKERS):
         return "AUTH-BLOCKED"
+    if status == 429:
+        return "RATE-LIMITED"
     if isinstance(status, int) and status >= 500:
         return f"HTTP{status}"
     if isinstance(status, int) and status in (400, 401, 403, 406):

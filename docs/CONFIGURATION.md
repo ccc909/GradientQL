@@ -26,7 +26,8 @@ llm:
   attacker_model: "z-ai/glm-5.2"
 
 scanner:
-  budget: 60           # the most steps a scan takes; each step is one model call and at most one request
+  budget: 60           # the most steps a scan takes; one model call per step (battery actions
+                       # like sweep/fuzz fire several requests within a step)
   safe_mode: false     # one switch to disable the destructive techniques
   attacks:             # turn individual techniques on or off
     injection: true
@@ -48,15 +49,31 @@ The scanner uses the first key it finds, in this order:
 ## Fields
 
 - **`target`**: `url` is the endpoint to scan (overridden by `--url` on the command line). `headers`
-  carries auth headers for an already-authenticated run, and `csrf` toggles CSRF handling.
+  carries auth headers for an already-authenticated run, and `csrf` toggles CSRF handling (token
+  `source`: `meta` | `cookie` | `header`, plus `header_name` / `meta_name` / `cookie_name`).
 - **`http`**: `proxy` routes traffic through an intercepting proxy such as Burp or mitmproxy, `delay`
-  sets seconds between requests for rate limiting, and `verify_tls` can be turned off for an
-  intercepting proxy or self-signed certificates.
+  sets seconds between requests for rate limiting, `timeout` caps each request (default 30s),
+  `retries` sets connection-level retries, and `verify_tls` can be turned off for an intercepting
+  proxy or self-signed certificates.
 - **`llm`**: `provider` and `attacker_model` choose the model that drives the scan; `api_key` /
-  `api_key_env` supply its key (see [API key](#api-key) above).
-- **`scanner`**: `budget` caps how many steps a scan takes (each step is one model call and at most
-  one request), `safe_mode` is a single switch that disables the destructive techniques, `attacks`
-  turns individual techniques on or off, and `oob` configures out-of-band callbacks for blind SSRF.
+  `api_key_env` supply its key (see [API key](#api-key) above). `temperature` (default 0.7),
+  `attacker_max_tokens` (output cap per step, default 16000), `timeout` and `max_retries` tune the
+  API calls; `response_format` can force `json_object` (leave `null` - it makes some models loop);
+  `circuit_breaker.threshold` / `circuit_breaker.cooldown` control how provider outages are ridden
+  out; `cache.memoize_responses` replays identical prompts (off by default; prompts almost never
+  repeat during a scan).
+- **`scanner`**: `budget` caps how many steps a scan takes (one model call per step; most actions
+  make at most one request, battery actions like `sweep`/`fuzz`/`auth_test` fire several - up to
+  ~16 within a single step), `safe_mode` is a single switch that disables the destructive
+  techniques, `attacks` turns individual techniques on or off, and `oob` configures out-of-band
+  callbacks for blind SSRF (`enabled`, `provider`, `collaborator_domain`, and `token` for private
+  interactsh servers). `checkpoint` (`enabled`, `every`, `dir`) auto-saves resumable snapshots -
+  resume with `--resume <run-id>`. `fuzz.max_payloads` caps the per-action battery (default 14),
+  `obs_max_chars` bounds how much response body the model sees (default 2000), and `tuning.*`
+  (`field_retry_cap`, `dup_fail_cap`, `coverage_nudge_every`) adjusts the anti-stall backstops.
+- **`embeddings`**: `model` (default `all-MiniLM-L6-v2`) and `min_fields` (default 80) control the
+  semantic schema index, built only for large schemas and only when the `semantic` install extra
+  (`pip install "gradientql[semantic]"`) is present; otherwise schema search is lexical.
 
 ## Sessions and authentication
 

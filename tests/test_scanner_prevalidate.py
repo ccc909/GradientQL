@@ -91,3 +91,29 @@ def test_mutation_missing_required_arg_blocked(sm):
     obs = prevalidate.prevalidate_query("mutation { createPaste(content: \"a\") { id } }", {}, sm)
     assert obs is not None
     assert "title" in obs
+
+
+def test_prevalidate_rejects_multi_operation_documents():
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+          "Mutation": {"deletePaste": {"args": [], "return_type": "T", "description": ""}},
+          "User": {"id": {"args": [], "return_type": "Int", "description": ""}}}
+    out = prevalidate_query("query { me { id } } mutation { deletePaste { __typename } }", {}, sm)
+    assert out and "2 operations" in out
+
+
+def test_prevalidate_rejects_batched_mutations():
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation", "Query": {},
+          "Mutation": {"deletePaste": {"args": [], "return_type": "T", "description": ""},
+                       "editPaste": {"args": [], "return_type": "T", "description": ""}}}
+    out = prevalidate_query(
+        "mutation { a: deletePaste { __typename } b: editPaste { __typename } }", {}, sm)
+    assert out and "ALONE" in out
+
+
+def test_prevalidate_allows_batched_query_fields():
+    sm = {"_query_type": "Query", "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+          "User": {"id": {"args": [], "return_type": "Int", "description": ""}}}
+    assert prevalidate_query("query { a: me { id } b: me { id } }", {}, sm) is None
+
+prevalidate_query = prevalidate.prevalidate_query

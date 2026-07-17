@@ -15,7 +15,7 @@ from ..core.llm import (
 )
 from ..utils.graphql_client import get_client
 from ..utils.reporter import append_vuln_retraction, append_vuln_stream
-from .actions import ActionContext, Result, dispatch
+from .actions import ActionContext, Result, disabled_actions, disabled_toggles, dispatch
 from .memory import (
     _ARSENAL_TOOLS,
     _ENDPOINT_TOOLS,
@@ -189,6 +189,20 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
 
     nudge_every = settings.get("scanner", {}).get("tuning", {}).get(
         "coverage_nudge_every", _COVERAGE_NUDGE_EVERY)
+    disabled = disabled_actions(settings)
+    skip_toggles = disabled_toggles(settings)
+    nudge_counts: dict[str, int] = {}
+
+    def _remind(key: str, text: str, cap: int = 2) -> None:
+        """Append a periodic reminder, firing each distinct kind at most `cap` times per run.
+
+        A reminder the model has already seen and ignored twice is noise (and prompt bloat);
+        state-driven nudges (degraded/fixation/no-probe) don't go through here.
+        """
+        if nudge_counts.get(key, 0) >= cap:
+            return
+        nudge_counts[key] = nudge_counts.get(key, 0) + 1
+        nudge.append(text)
 
     recent_actions: list[str] = []
     recent_targets: list[str] = []
@@ -304,35 +318,36 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             nudge.append(f"(optional) fields that echoed your input - `fuzz` ONLY if the field looks like it "
                          f"renders/interpolates input, otherwise ignore: {', '.join(echoed[:5])}")
         if noprobe_streak >= 2 and not degraded:
-            nudge.append(f"You've taken {noprobe_streak} recon/no-probe actions in a row - search & notes "
-                         f"DON'T make progress. SEND A REQUEST now (graphql/fuzz/sweep) to actually test something.")
+            nudge.append(f"You've taken {noprobe_streak} actions in a row that sent NO request to the "
+                         f"target - notes/search/identity setup DON'T make progress. SEND A REQUEST "
+                         f"now (graphql/fuzz/sweep) to actually test something.")
         if step % nudge_every == 0 and not degraded:
             uhv = untested_high_value_fields(schema_map, ctx.ledger)
             if uhv and (budget - step) > 2:
-                nudge.append(f"(reminder) high-value fields not yet probed: {', '.join(uhv[:6])}")
-            missing = unconfirmed_classes(ctx.vulns)
+                _remind("hv", f"(reminder) high-value fields not yet probed: {', '.join(uhv[:6])}")
+            missing = unconfirmed_classes(ctx.vulns, skip_toggles)
             if missing and (budget - step) > 2:
-                nudge.append("(reminder) untested vuln classes: " + "; ".join(missing[:4]))
-            unused_tools = [t for t in _ENDPOINT_TOOLS if t not in techniques_used]
+                _remind("classes", "(reminder) untested vuln classes: " + "; ".join(missing[:4]))
+            unused_tools = [t for t in _ENDPOINT_TOOLS if t not in techniques_used and t not in disabled]
             if unused_tools and (budget - step) > 2:
-                nudge.append(f"(reminder) endpoint-level tools not yet run: {', '.join(unused_tools)}")
+                _remind("tools", f"(reminder) endpoint-level tools not yet run: {', '.join(unused_tools)}")
             sqli_args = unfuzzed_string_args(schema_map, ctx._fuzz_seen)
             if sqli_args and (budget - step) > 2:
-                nudge.append("(reminder) string args NOT yet SQLi-fuzzed - a filter/search/id/title arg on a "
-                             "data-returning query is a classic SQLi sink even when the field 'works' on a "
-                             "normal read; don't clear it by the field NAME. fuzz classes:['sqli']: "
-                             + ", ".join(sqli_args))
+                _remind("sqli", "(reminder) string args NOT yet SQLi-fuzzed - a filter/search/id/title arg "
+                        "on a data-returning query is a classic SQLi sink even when the field 'works' on a "
+                        "normal read; don't clear it by the field NAME. fuzz classes:['sqli']: "
+                        + ", ".join(sqli_args))
             tok_fields = token_arg_fields(schema_map)
             if tok_fields and (budget - step) > 2:
                 have_tok = bool(ctx.harvested.get("forged_jwt") or ctx.harvested.get("jwt"))
                 verbatim = (" You already have a forged/captured token - paste it VERBATIM into the field arg "
                             "(an alg:none JWT ends in a trailing '.', keep it; dropping a segment gives "
                             "'Not enough segments')." if have_tok else "")
-                nudge.append("(reminder) field(s) taking a token/jwt arg: " + ", ".join(tok_fields)
-                             + " - a JWT can be read from a FIELD ARGUMENT, not just the Authorization "
-                             "header. Pass a captured/forged token INTO the field via graphql (forge_jwt "
-                             "approach:'none' if you have none; register an account to seed a token if login fails)."
-                             + verbatim)
+                _remind("token", "(reminder) field(s) taking a token/jwt arg: " + ", ".join(tok_fields)
+                        + " - a JWT can be read from a FIELD ARGUMENT, not just the Authorization "
+                        "header. Pass a captured/forged token INTO the field via graphql (forge_jwt "
+                        "approach:'none' if you have none; register an account to seed a token if login fails)."
+                        + verbatim)
         fixation = "  ".join(nudge)
 
         prompt = build_prompt({
@@ -342,7 +357,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             "covered": ctx.covered, "credentials": ctx.credentials, "facts": ctx.facts,
             "searched": ctx.searched, "findings": len(ctx.vulns), "vulns": ctx.vulns, "ledger": ctx.ledger,
             "notes": ctx.notes, "history": ctx.history, "decisions": ctx.decisions,
-            "fixation": fixation, "steering": active_steer,
+            "fixation": fixation, "steering": active_steer, "disabled_tools": sorted(disabled),
         })
 
         llm_error: str | None = None
@@ -448,7 +463,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 ctx.decisions.append(_decision_line(step, "done", args, thought,
                                                     "DEFERRED - target unresponsive; backing off, not stopping"))
                 continue
-            unused = [t for t in _ENDPOINT_TOOLS if t not in techniques_used]
+            unused = [t for t in _ENDPOINT_TOOLS if t not in techniques_used and t not in disabled]
             if unused and (budget - step) > 3 and done_deferrals < _DONE_DEFERRALS:
                 done_deferrals += 1
                 recent_actions[-1] = "deferred"
@@ -502,17 +517,20 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 logger.info("    ↳ %s", ln[:600])
         if res.touched_target:
             consecutive_dead = consecutive_dead + 1 if res.is_dead else 0
-        if name in _NONPROBE_ACTIONS:
-            noprobe_streak += 1
-        elif not (res.blocked or res.is_dead):
+            if not res.is_dead:
+                backoffs = 0  # target answered normally again - clear the degraded sleep ladder
+        if res.touched_target and not res.is_dead:
             noprobe_streak = 0
             blocked_recon = 0
+        else:
+            noprobe_streak += 1
         if res.blocked:
             recent_actions[-1] = "blocked"
-            consec_blocked += 1
-            if consec_blocked >= _NOACTION_ABORT:
-                logger.warning("AGENT aborting: %d actions blocked in a row (model won't pivot)", consec_blocked)
-                break
+            if not res.config_blocked:  # disabled-by-config rejects are guidance, not model stubbornness
+                consec_blocked += 1
+                if consec_blocked >= _NOACTION_ABORT:
+                    logger.warning("AGENT aborting: %d actions blocked in a row (model won't pivot)", consec_blocked)
+                    break
         else:
             consec_blocked = 0
 

@@ -109,16 +109,19 @@ def tool_smuggle(target_url: str) -> tuple[bool, str]:
     return False, "no smuggling/desync detected"
 
 
-def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> list[str]:
+def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1,
+              session: Any = None) -> list[str]:
     """Run GET-exec, content-type, and CORS checks and return human-readable verdicts.
 
     `n_mutations` gates the GET-mutation probe (0 skips it when the schema has none).
+    Pass the scan client's session so proxy/TLS settings apply to these probes too.
     """
     import requests
+    http = session or requests
     jar = cookies or {}
     out: list[str] = []
     try:
-        r = requests.get(target_url, params={"query": "{__typename}"}, cookies=jar, timeout=12)
+        r = http.get(target_url, params={"query": "{__typename}"}, cookies=jar, timeout=12)
         executed = r.status_code == 200 and ("__typename" in r.text or '"data"' in r.text)
         if not executed:
             out.append(f"GET-exec: rejected (HTTP {r.status_code}) - not GET-CSRFable")
@@ -131,7 +134,7 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
         out.append(f"GET-exec: check failed ({str(e)[:50]})")
     if n_mutations != 0:
         try:
-            r = requests.get(target_url, params={"query": "mutation { __typename }"}, cookies=jar, timeout=12)
+            r = http.get(target_url, params={"query": "mutation { __typename }"}, cookies=jar, timeout=12)
             try:
                 body = r.json()
             except (ValueError, requests.RequestException):
@@ -151,7 +154,7 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
     for ct, body in (("text/plain", '{"query":"{__typename}"}'),
                      ("application/x-www-form-urlencoded", "query=%7B__typename%7D")):
         try:
-            r = requests.post(target_url, data=body, headers={"Content-Type": ct}, cookies=jar, timeout=12)
+            r = http.post(target_url, data=body, headers={"Content-Type": ct}, cookies=jar, timeout=12)
             if r.status_code == 200 and "__typename" in (r.text or ""):
                 smuggled.append(ct)
         except Exception:  # noqa: BLE001
@@ -162,8 +165,8 @@ def tool_csrf(target_url: str, cookies: dict | None, n_mutations: int = -1) -> l
                    "guard + cookie auth; verify a guard exists before reporting (advisory, not auto-recorded).")
     try:
         origin = "https://evil.example"
-        r = requests.post(target_url, json={"query": "{__typename}"},
-                          headers={"Origin": origin}, cookies=jar, timeout=12)
+        r = http.post(target_url, json={"query": "{__typename}"},
+                      headers={"Origin": origin}, cookies=jar, timeout=12)
         acao = r.headers.get("Access-Control-Allow-Origin", "")
         acac = r.headers.get("Access-Control-Allow-Credentials", "").lower()
         if acao == origin and acac == "true":

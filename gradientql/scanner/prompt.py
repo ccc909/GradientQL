@@ -31,6 +31,8 @@ below - never invent a new one, or the login fails and the chain dies. If signup
 CONFIRMATION before login, use temp_mail: register with the disposable address, read the mail, then
 EITHER call confirmEmail with the key, OR if confirmation is a LINK (the common case), `visit` it to
 activate - THEN log in. That unlocks authenticated BOLA/IDOR.
+Do NOT burn steps single-guessing credentials (admin/admin one login at a time) - credential
+guessing is what `batch_brute` with a dictionary is for: one action, many guesses.
 BUT FIRST CHECK KNOWN: if it says this schema has NO token-minting mutation, auth is OUT-OF-BAND
 (REST/OIDC) - do NOT waste steps hunting a GraphQL login/register; focus on the unauth surface.
 
@@ -101,6 +103,8 @@ HIGH-VALUE TARGETS for THIS schema - where real findings live; DO NOT finish wit
 YOUR RUN LOG - every action you've taken, in order, WITH your own reasoning («…»). This is your
 memory of what you've already tried and concluded: if a field/credential/identity already failed
 here, do NOT repeat it - build on it or pivot. Don't re-derive what you already worked out.
+(Older steps are compacted - thoughts stripped, repeats merged (xN) - so nothing you tried is
+forgotten; KNOWN and the MAP hold the durable conclusions.)
 {decisions}
 
 RECENT ACTIONS + OBSERVATIONS (raw, last few - full response detail):
@@ -112,7 +116,9 @@ FINDINGS YOU'VE RECORDED (retract any you later DISPROVE - by id - so false posi
 You STEER YOURSELF. Nothing forces you off a field - but the MAP shows what's already dead, so
 don't waste budget re-running it. As you learn, SCORE what you see by attaching either/both of
 these OPTIONAL keys to ANY action (they update YOUR map, they are not separate turns):
-  "learned": "<a durable fact, e.g. 'new accounts need email confirmation -> self-reg login dead'>"
+  "learned": "<a durable RESULT you confirmed, e.g. 'signup needs email confirmation' or
+    'me(token) masks passwords for legit tokens' - a fact you LEARNED from a response, never a
+    plan or intention ('testing X' is not a fact and helps no one)>"
   "verdict": {{"field": "<root field>", "state": "dead"|"open"|"exploited", "why": "<short>", "confidence": 0.0-1.0}}
   "retract": {{"id": "<the fN id from FINDINGS YOU'VE RECORDED>", "why": "<what disproved it>"}}
 Mark a vector "dead" when you're done with it and "open" when it's worth another angle (e.g. retry
@@ -125,79 +131,135 @@ worse than a miss; you can retract on ANY step, including right after the call t
 Respond with EXACTLY ONE JSON object, nothing else:
 {{"thought": "<1-2 sentences>", "action": "<name>", "args": {{...}}, "learned"?: "...", "verdict"?: {{...}}, "retract"?: {{...}}}}
 Actions:
-- graphql: args {{query, variables?, headers?}} - send a request. Auto-checked for
+{actions_doc}
+Output ONLY the JSON object."""
+
+
+# Per-action doc bullets. Joined into the prompt by build_prompt, which drops any action the
+# operator's config disables (scanner.attacks / safe_mode) so the model isn't sent after tools
+# that will only be rejected. NOTE: single braces here - these are substituted as VALUES.
+_ACTION_DOCS: dict[str, str] = {
+    "graphql": """- graphql: args {query, variables?, headers?} - send a request. Auto-checked for
   injection/DoS/server-errors; response data is shown and tokens/ids are harvested.
   headers merge over your identity. ALL-OR-NOTHING: if ANY field/selection/arg in the query
   is invalid, the SERVER REJECTS THE WHOLE QUERY and you get ZERO data - so do NOT batch
-  guessed subfields. Select {{ __typename }} to confirm a field is reachable, then add real
+  guessed subfields. Select { __typename } to confirm a field is reachable, then add real
   subfields you've verified via search_schema/__type. On a validation error ("Cannot query
   field X", "argument is required", "Unknown argument"), the field you actually care about was
-  NOT tested - RE-RUN IT ALONE before giving up on it.
-- fuzz: args {{field, arg, classes?: ["ssti","cmdi","sqli","nosql","traversal","ssrf","coercion","enum"],
-  payloads?: ["...your OWN payloads..."], path?, input?, selection?}} - fire a payload battery at
+  NOT tested - RE-RUN IT ALONE before giving up on it.""",
+    "fuzz": """- fuzz: args {field, arg, classes?: ["ssti","cmdi","sqli","nosql","traversal","ssrf","coercion","enum"],
+  payloads?: ["...your OWN payloads..."], path?, input?, selection?} - fire a payload battery at
   ONE field's string target in a single turn (each payload is sent as a variable, so it reaches the
   resolver intact). Auto-detects eval/error/reflection/diff per payload and uses an OOB URL for ssrf.
-  pass your own payloads and/or pick classes. Top-level arg: {{"field":"echo","arg":"text","classes":["ssti","cmdi"]}}.
+  pass your own payloads and/or pick classes. Top-level arg: {"field":"echo","arg":"text","classes":["ssti","cmdi"]}.
   NESTED string field inside an input object (the common case for create*/*Input mutations): set
   `arg` to the input arg, `path` to the leaf, and `input` to the FULL base object with valid filler
   values for the other required fields - e.g.
-  {{"field":"createCustomerAddress","arg":"input","path":"city","input":{{"firstname":"x","lastname":"y","city":"x","country_code":"SK"}},"classes":["ssti","cmdi"]}}.
+  {"field":"createCustomerAddress","arg":"input","path":"city","input":{"firstname":"x","lastname":"y","city":"x","country_code":"SK"},"classes":["ssti","cmdi"]}.
   classes:["coercion"] works on ANY scalar arg (Int/Float/Boolean/enum too): it sends wrong-typed
-  literals (string→Int, array/object→scalar, null→NonNull, overflow, a {{ne:""}}/{{regex}} NoSQL
+  literals (string→Int, array/object→scalar, null→NonNull, overflow, a {ne:""}/{regex} NoSQL
   object) to surface coercion bugs / verbose backend exceptions; classes:["enum"] elicits a
-  "did you mean X,Y,Z" enum-set leak. Use these on numeric/enum args the normal payloads can't touch.
-- batch_brute: args {{template (with a {{V}} placeholder), values:[...], op?:"mutation"|"query"}} -
+  "did you mean X,Y,Z" enum-set leak. Use these on numeric/enum args the normal payloads can't touch.""",
+    "batch_brute": """- batch_brute: args {template (with a {V} placeholder), values:[...], op?:"mutation"|"query"} -
   alias-multiplex ONE field N× in a SINGLE request, substituting each value, to bypass per-request
   rate limits / lockouts (credential or OTP/2FA brute-force - the classic GraphQL batching attack).
   Reports which aliases succeeded + whether the server processed them all without limiting. e.g.
-  {{"template":"login(username:\"admin\", password:\"{{V}}\") {{ token }}","values":["0000","0001","0002"]}}.
-- auth_test: args {{query, variables?}} - run ONE field/mutation under anonymous / your current token /
+  {"template":"login(username:\\"admin\\", password:\\"{V}\\") { token }","values":["0000","0001","0002"]}.""",
+    "auth_test": """- auth_test: args {query, variables?} - run ONE field/mutation under anonymous / your current token /
   a forged-admin token (+ any 2nd harvested token) as ISOLATED requests and DIFF the outcomes. THE way
   to test auth-sensitive fields (token-mint, password-reset, account-destruct, order/payment mutations):
   a sensitive field that returns DATA unauthenticated or for the WRONG user is broken access control.
-  e.g. {{"query":"mutation {{ generateCustomerTokenAsAdmin(input:{{customer_email:\"victim@x.io\"}}) {{ customer_token }} }}"}}.
-- set_identity: args {{headers}} - adopt auth headers (e.g. a captured token) for ALL
-  future graphql calls. This is how you "log in".
-- temp_mail: args {{op?: "new"|"check"}} - get a DISPOSABLE inbox YOU control (mail.tm). First
+  e.g. {"query":"mutation { generateCustomerTokenAsAdmin(input:{customer_email:\\"victim@x.io\\"}) { customer_token } }"}.""",
+    "set_identity": """- set_identity: args {headers} - adopt auth headers (e.g. a captured token) for ALL
+  future graphql calls. This is how you "log in".""",
+    "temp_mail": """- temp_mail: args {op?: "new"|"check"} - get a DISPOSABLE inbox YOU control (mail.tm). First
   call returns an email address - REGISTER with that EXACT address; call again to READ the
   confirmation mail. It surfaces both KEYS= (use in confirmEmail) and LINKS= (open with `visit`).
   This is how you get PAST email-confirmation to an AUTHENTICATED session (the gateway to real
-  BOLA/IDOR - read another customer's address/orders/cart).
-- visit: args {{url}} - open an HTTP LINK (account-activation / magic-login / password-reset, e.g.
+  BOLA/IDOR - read another customer's address/orders/cart).""",
+    "visit": """- visit: args {url} - open an HTTP LINK (account-activation / magic-login / password-reset, e.g.
   a LINKS= entry from temp_mail) in YOUR session. GETs it (cookies carry over so later authed
   queries just work), follows redirects, harvests any token, and says if the account looks activated.
-  Use this when confirmation is a clickable LINK rather than a confirmEmail key.
-- sweep: args {{}} - RECON: fire ONE batched query across many untested no-arg root fields at
+  Use this when confirmation is a clickable LINK rather than a confirmEmail key.""",
+    "sweep": """- sweep: args {} - RECON: fire ONE batched query across many untested no-arg root fields at
   once; reports which return DATA (drill these - possible unauth exposure/BOLA), which are
   auth-blocked, null, or error. The fastest way to map the surface - call it early and repeat
-  to cover more. Required-arg fields aren't swept; drill those with graphql.
-- search_schema: args {{keyword}} - find fields/types/inputs. Semantic on large schemas,
+  to cover more. Required-arg fields aren't swept; drill those with graphql.""",
+    "search_schema": """- search_schema: args {keyword} - find fields/types/inputs. Semantic on large schemas,
   so CONCEPTS work, not just exact names: "login" surfaces generateCustomerToken, "admin"
-  surfaces privileged mutations. Lines prefixed "~ ... (semantic)" are fuzzy matches.
-- note: args {{text}} - append to your notes.
-- forge_jwt: args {{approach: "none"|"weak_secret"|"kid", secret?, claims?}} - mint a
+  surfaces privileged mutations. Lines prefixed "~ ... (semantic)" are fuzzy matches.""",
+    "note": """- note: args {text} - append to your notes.""",
+    "forge_jwt": """- forge_jwt: args {approach: "none"|"weak_secret"|"kid", secret?, claims?} - mint a
   forged JWT (alg:none / weak HMAC secret / kid path-traversal), tampering a harvested
-  token's claims. Returns a token. Test acceptance BOTH ways: (a) adopt it with set_identity
+  token's claims. approach "weak_secret" with NO secret tries a built-in list of common
+  secrets in one go. Returns a token. Test acceptance BOTH ways: (a) adopt it with set_identity
   (Authorization: Bearer ...); (b) if a field takes a token/jwt/auth arg (e.g. me(token:)),
   pass the token INTO that field via graphql - some servers read the JWT from a field argument,
   not the header. Paste the token VERBATIM (an alg:none JWT ends in a trailing '.' - keep it, or
   you get 'Not enough segments'). No harvested token to tamper? Register an account (createUser/
-  signup) and log in to seed one, or forge blind with claims:{{...}} (identity must match a real username).
-- oob_url: args {{op?: "new"|"check"}} - "new" (default) mints a unique out-of-band callback
+  signup) and log in to seed one, or forge blind with claims:{...} (identity must match a real username).""",
+    "oob_url": """- oob_url: args {op?: "new"|"check"} - "new" (default) mints a unique out-of-band callback
   URL; inject it into a url/webhook/redirect/fetch arg. Then call oob_url op:"check" a few
-  steps later - if the server fetched it, you get a confirmed BLIND SSRF/XXE finding live.
-- dos: args {{type: "aliases"|"depth"|"batch"|"fragment"|"directive"|"complexity"|"pagination"}} -
+  steps later - if the server fetched it, you get a confirmed BLIND SSRF/XXE finding live.""",
+    "dos": """- dos: args {type: "aliases"|"depth"|"batch"|"fragment"|"directive"|"complexity"|"pagination"} -
   send a resource-exhaustion overload (alias/field duplication, deep nesting, JSON batch, circular
   fragment, stacked-directive flood, complexity overflow, or a huge-page-size pagination request);
-  auto-confirms if the server accepts it with no cost/depth/directive/page limiting.
-- smuggle: args {{}} - run HTTP request-smuggling / desync probes (raw sockets).
-- csrf: args {{}} - PROBE the live endpoint for CSRF (GET-based execution) + CORS reflection,
+  auto-confirms if the server accepts it with no cost/depth/directive/page limiting.""",
+    "smuggle": """- smuggle: args {} - run HTTP request-smuggling / desync probes (raw sockets).""",
+    "csrf": """- csrf: args {} - PROBE the live endpoint for CSRF (GET-based execution) + CORS reflection,
   reported honestly. A CSRF finding REQUIRES a state-changing op runnable via GET (0 mutations
   = no classic CSRF); a CORS finding REQUIRES arbitrary-Origin reflection WITH credentials. Do
-  NOT report cache-poisoning/CSWSH from this - they're unverified.
-- report_finding: args {{vuln_type, target, evidence, severity}} - record a CONFIRMED vuln.
-- done: args {{reason}} - stop early.
-Output ONLY the JSON object."""
+  NOT report cache-poisoning/CSWSH from this - they're unverified.""",
+    "report_finding": """- report_finding: args {vuln_type, target, evidence, severity} - record a CONFIRMED vuln.""",
+    "done": """- done: args {reason} - stop early.""",
+}
+
+
+def _render_actions_doc(disabled: set[str]) -> str:
+    doc = "\n".join(doc for name, doc in _ACTION_DOCS.items() if name not in disabled)
+    if disabled:
+        doc += ("\n(DISABLED by the operator's config - do NOT attempt these; the call is "
+                "rejected and the step is wasted: " + ", ".join(sorted(disabled)) + ")")
+    return doc
+
+
+_DECISIONS_FULL_WINDOW = 40   # most-recent steps kept verbatim (thoughts included)
+_DECISIONS_COMPACT_CAP = 40   # cap on compacted lines for older steps
+
+
+def _decision_key(line: str) -> str:
+    """The '<name> <target>' identity of a decision line, used to merge repeat runs."""
+    m = re.match(r"\[\d+\] (\S+)( [^ →]+)?", line)
+    return (m.group(1) + (m.group(2) or "")) if m else line[:40]
+
+
+def _render_decisions(decisions: list[str]) -> str:
+    """Render the run log, compacting older steps instead of dropping them.
+
+    The most recent _DECISIONS_FULL_WINDOW lines stay verbatim (thoughts included). Older
+    lines lose their «thought» and consecutive repeats of the same action+target merge into
+    one line with an (xN) count, so the model keeps full knowledge of what it already tried
+    without re-reading every word. If even the compacted form overflows its cap, the oldest
+    lines are dropped with an explicit marker - nothing is silently truncated.
+    """
+    if not decisions:
+        return "(nothing yet)"
+    if len(decisions) <= _DECISIONS_FULL_WINDOW:
+        return "\n".join(decisions)
+    old, recent = decisions[:-_DECISIONS_FULL_WINDOW], decisions[-_DECISIONS_FULL_WINDOW:]
+    merged: list[list] = []
+    for ln in old:
+        head = ln.split("  «", 1)[0].strip()
+        if merged and _decision_key(head) == _decision_key(merged[-1][0]):
+            merged[-1] = (head, merged[-1][1] + 1)
+        else:
+            merged.append((head, 1))
+    lines = [h if n == 1 else f"{h} (x{n})" for h, n in merged]
+    dropped = len(lines) - _DECISIONS_COMPACT_CAP
+    if dropped > 0:
+        lines = [f"(... {dropped} earliest compacted line(s) dropped - KNOWN + the MAP hold "
+                 "their state)"] + lines[dropped:]
+    return "\n".join(lines + ["— recent steps, verbatim —"] + recent)
 
 
 def build_prompt(ctx: dict[str, Any]) -> str:
@@ -231,8 +293,7 @@ def build_prompt(ctx: dict[str, Any]) -> str:
         fix = f"\n  ⚠ {ctx['fixation']}"
     hist = "\n".join(ctx["history"][-18:]) or "(none yet)"
     notes = "\n".join(f"- {n}" for n in ctx["notes"][-25:]) or "(empty)"
-    log_window = min(int(ctx.get("budget") or 60), 120)
-    decisions = "\n".join((ctx.get("decisions") or [])[-log_window:]) or "(nothing yet)"
+    decisions = _render_decisions(ctx.get("decisions") or [])
     recorded = "\n".join(f"  [{v.get('id', '?')}] {v.get('vuln_type')} on {v.get('target_node')}"
                          for v in (ctx.get("vulns") or [])) or "  (none yet)"
     return _SYSTEM.format(
@@ -240,6 +301,7 @@ def build_prompt(ctx: dict[str, Any]) -> str:
         harvested=harv, credentials=creds, state=state, fixation=fix, steering=steer_block,
         notes=notes, overview=overview, high_value=high_value, history=hist,
         decisions=decisions, recorded=recorded,
+        actions_doc=_render_actions_doc(set(ctx.get("disabled_tools") or [])),
     )
 
 
