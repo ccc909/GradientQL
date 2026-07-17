@@ -1,12 +1,17 @@
-"""Generate the TUI screenshots used in the README, filled with illustrative data.
+"""Generate the TUI screenshots used in the README.
 
-Writes docs/menu.svg, docs/settings.svg, and docs/dashboard.svg. The output is SVG so it
-renders crisply on GitHub without a rasterizer. Run with `python scripts/generate_screenshots.py`.
-Only `textual` and `rich` are required (no target, no model calls).
+Menu and settings are drawn from illustrative demo state. The dashboard is rendered from the
+newest real run checkpoint in output/checkpoints (an actual DVGA scan), so the live screen shows
+real findings, loot, and coverage; it falls back to demo state when no checkpoint is present. The
+output is SVG so it renders crisply on GitHub without a rasterizer. Run with
+`python scripts/generate_screenshots.py`; only textual and rich are required.
 """
 from __future__ import annotations
 
 import asyncio
+import glob
+import json
+import os
 import pathlib
 import warnings
 from types import SimpleNamespace
@@ -14,10 +19,13 @@ from types import SimpleNamespace
 from gradientql import tui
 
 DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
-SIZE = (150, 42)
+ROOT = DOCS.parent
+MENU_SIZE = (150, 42)   # menu and settings read well at a standard terminal
+DASH_SIZE = (200, 46)   # the live dashboard packs four panels, so give it a real fullscreen width
+TARGET_URL = "http://dvga.local/graphql"
 
 DEMO_SETTINGS = {
-    "target": {"url": "https://api.example.shop/graphql"},
+    "target": {"url": TARGET_URL},
     "scanner": {"budget": 60, "checkpoint": {"enabled": True, "every": 5}},
     "llm": {"api_key": "sk-demo", "attacker_model": "z-ai/glm-5.2", "attacker_max_tokens": 64000},
     "http": {},
@@ -60,30 +68,58 @@ def _demo_ctx() -> SimpleNamespace:
                 "reasoning": 9800, "calls": 18})
 
 
+def _checkpoint_ctx() -> tuple[SimpleNamespace, int, int] | None:
+    """The newest real run checkpoint as a render ctx plus (step, budget), or None if absent."""
+    files = sorted(glob.glob(str(ROOT / "output" / "checkpoints" / "gql-*.json")), key=os.path.getmtime)
+    if not files:
+        return None
+    with open(files[-1], encoding="utf-8") as fh:
+        d = json.load(fh)
+    c = d.get("ctx", {})
+    ctx = SimpleNamespace(
+        schema_map=d.get("schema_map", {}), ledger=c.get("ledger", {}),
+        identity=c.get("identity", {}), credentials=c.get("credentials", []),
+        harvested=c.get("harvested", {}), facts=c.get("facts", []),
+        vulns=c.get("vulns", []), interactions=c.get("interactions", []),
+        decisions=c.get("decisions", []), tokens=c.get("tokens", {}))
+    return ctx, int(d.get("step", 39)), int(d.get("budget", 40))
+
+
 async def main() -> None:
     warnings.filterwarnings("ignore")
     DOCS.mkdir(exist_ok=True)
-    # No-op the scan worker: no target or model calls, we drive the dashboard panes by hand.
+    # No-op the scan worker: we drive the dashboard panes by hand, no target or model calls.
     tui.DashboardScreen.run_scan = lambda self: None
 
-    app = tui.GradientQLApp(DEMO_SETTINGS, DEMO_SETTINGS["target"]["url"])
-    async with app.run_test(size=SIZE) as pilot:
+    app = tui.GradientQLApp(DEMO_SETTINGS, TARGET_URL)
+    async with app.run_test(size=MENU_SIZE) as pilot:
         await pilot.pause()
         app.save_screenshot(str(DOCS / "menu.svg"))
-
         await pilot.click("#settings")
         await pilot.pause()
         app.save_screenshot(str(DOCS / "settings.svg"))
-        await pilot.press("escape")
-        await pilot.pause()
 
+    real = _checkpoint_ctx()
+    if real is not None:
+        ctx, step, budget = real
+        run_line = "run gql-20260717-0737-ddad · auto-checkpoint every step"
+    else:
+        ctx, step, budget = _demo_ctx(), 33, 60
+        run_line = "run gql-20260715-2130-a3f9 · auto-checkpoint every 5 steps"
+
+    app = tui.GradientQLApp(DEMO_SETTINGS, TARGET_URL)
+    async with app.run_test(size=DASH_SIZE) as pilot:
+        await pilot.pause()
+        app.scan_active = True  # so the "thinking" indicator renders like a live run
         app.push_screen(tui.DashboardScreen())
         await pilot.pause()
         scr = app.screen
-        scr._start = tui.time.monotonic() - 105
-        scr._log("run gql-20260715-2130-a3f9 · auto-checkpoint every 5 steps", f"bold {tui.GOLD}")
-        scr._update(33, 60, _demo_ctx())
-        scr._set_header("SCANNING", f"bold {tui.GOLD_HI}", DEMO_SETTINGS["target"]["url"])
+        scr._start = tui.time.monotonic() - 598  # elapsed ~09:58
+        scr._log(run_line, f"bold {tui.GOLD}")
+        scr._update(step, budget, ctx)
+        scr._set_header("SCANNING", f"bold {tui.GOLD_HI}", TARGET_URL)
+        scr._last_step_ts = tui.time.monotonic() - 2.0  # idle > 0.6s, so _pulse shows "thinking"
+        await asyncio.sleep(0.5)  # let the 0.35s pulse timer fire
         await pilot.pause()
         app.save_screenshot(str(DOCS / "dashboard.svg"))
 

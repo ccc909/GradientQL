@@ -1,7 +1,9 @@
 name: Screenshots
 
-# Regenerate the README TUI screenshots (docs/*.svg) whenever the TUI or the harness changes,
-# and commit them back. Also runnable on demand from the Actions tab.
+# Regenerate the demo README screenshots (menu, settings) whenever the TUI or the generator
+# changes, and commit them back. docs/dashboard.svg is a real DVGA scan capture committed by
+# hand: CI has no run checkpoint to render it from, so it is deliberately left untouched here.
+# Also runnable on demand from the Actions tab.
 on:
   push:
     branches: [main]
@@ -40,7 +42,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/menu.svg docs/settings.svg docs/dashboard.svg
+          git add docs/menu.svg docs/settings.svg
           if git diff --cached --quiet; then
             echo "Screenshots unchanged."
           else
