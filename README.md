@@ -2,6 +2,7 @@
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-e8a317.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ccc909/GradientQL/blob/main/notebooks/gradientql_dvga.ipynb)
 
 GradientQL is an autonomous GraphQL vulnerability scanner driven by a single language model. You
 give it an endpoint and a model API key, and it runs the whole assessment on its own, against a live
