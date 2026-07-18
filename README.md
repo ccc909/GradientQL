@@ -204,19 +204,23 @@ earn one itself through the signup, email confirmation, and login flow using the
 
 Against a fresh
 [Damn Vulnerable GraphQL Application](https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application)
-(DVGA) instance - the standard intentionally-vulnerable GraphQL target - with the default attack
-configuration:
+(DVGA), the standard intentionally-vulnerable GraphQL target, three models were each run five times
+at a 30-step budget with the default attack configuration. Each row is one vulnerability category;
+the filled segments are the runs (out of five) in which that model found it.
 
-| Model | Budget | Steps used | Findings | How it went |
-|---|---|---|---|---|
-| `z-ai/glm-5.2` | 200 | 119 (self-terminated) | **20** | used a confirmed RCE to read the target's own source: recovered the hardcoded `JWT_SECRET_KEY`, then found a JSON-body injection that unmasks every user's password |
-| `openai/gpt-oss-120b` | 200 | 200 (full budget) | **13** | methodical identity-matrix work across the whole surface |
+<a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/model_comparison.svg"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="760"></a>
 
-The glm run's 20 findings include the full BOLA/BFLA cluster (cross-user read, edit, delete, and
-`deleteAllPastes`), two RCE vectors, blind SSRF, SQLi, path traversal, and audit-log disclosure -
-with zero false positives shipped (the model retracted the one it disproved itself). These are
-single runs, so indicative rather than a rate; a five-run benchmark at a 30-step budget, the full
-methodology, and token counts are in [docs/results.md](docs/results.md).
+All three find the easy categories (introspection, batch-query denial of service, stack-trace
+leakage) in nearly every run, and separate on the multi-step authentication chains, where glm is
+strongest. Mean findings per run: glm 7.4, qwen 6.0, gpt-oss 4.8.
+
+Given a larger budget, the strongest model goes deeper. In a single 200-step run, glm self-terminated
+at step 119 with **20 findings** and no false positives: it used a confirmed command injection to read
+the target's own source, recovered the hardcoded `JWT_SECRET_KEY`, and from that derived a JSON-body
+auth bypass that unmasks every user's password.
+
+Full methodology, the exact per-category counts, larger-budget runs, and token usage are in
+[docs/results.md](docs/results.md).
 
 ## Reference
 
