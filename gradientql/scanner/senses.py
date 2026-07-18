@@ -219,6 +219,32 @@ def detect_server_error_surface(response: dict) -> tuple[str | None, str]:
     return None, ""
 
 
+_FILE_READ_MARKERS = (
+    r"root:.*?:0:0:",                       # /etc/passwd
+    r"\[fonts\]|\[extensions\]|for 16-bit app support",  # win.ini
+    r"root:[x*!]?:\d+:\d+",                 # /etc/shadow-ish passwd variants
+    r"PATH=/usr|/bin/bash",                 # /proc/self/environ-ish
+)
+
+
+def detect_file_read_surface(response: dict) -> tuple[str | None, str]:
+    """Detect local-file content (passwd/win.ini/proc) reflected via a render/SSRF file:// read.
+
+    Returns (vuln_type, reason), or (None, "") when no local-file signature is present. Labels
+    the hit as file disclosure - distinct from the command-injection detector's RCE label.
+    """
+    data = response.get("data")
+    if not data:
+        return None, ""
+    blob = json.dumps(data, default=str)
+    for pat in _FILE_READ_MARKERS:
+        m = re.search(pat, blob, re.IGNORECASE)
+        if m:
+            return ("Local File Disclosure (SSRF / headless-render file://)",
+                    f"local_file_content_in_response: matched {m.group(0)[:60]!r}")
+    return None, ""
+
+
 def run_detectors(query: str, response: dict[str, Any]) -> list[tuple[str, str]]:
     hits = []
     for fn, fn_args in ((detect_injection_surface, (query, response)),

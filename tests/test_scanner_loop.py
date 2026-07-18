@@ -8,6 +8,13 @@ from gradientql.scanner import loop
 from tests.conftest import MockClient, scripted_llm
 
 
+@pytest.fixture(autouse=True)
+def _no_preflight_plan(monkeypatch):
+    """These tests script exact LLM action sequences; the pre-run planner would eat the first
+    response. Disable it here - the preflight is covered end-to-end in test_scanner_plan.py."""
+    monkeypatch.setattr(loop, "_seed_preflight_plan", lambda *a, **k: None)
+
+
 @pytest.fixture()
 def patch_loop(monkeypatch):
     """Patch the loop's external deps; return a runner(actions, client, **kw) -> result."""
@@ -276,7 +283,7 @@ def test_llm_none_returns_back_off_and_bounded_abort(monkeypatch):
     import gradientql.utils.oob as oobmod
     llmmod.reset_circuit()
     sleeps: list = []
-    monkeypatch.setattr(loop.time, "sleep", lambda s=0, *a, **k: sleeps.append(s))
+    monkeypatch.setattr(loop, "_sleep_or_stop", lambda s, ss=None, *a, **k: sleeps.append(s))
     monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
     monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
     monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: MockClient())
@@ -293,7 +300,7 @@ def test_llm_circuit_open_waits_then_aborts(monkeypatch):
     # and gives up only after a bounded number of waits so a truly dead provider still terminates.
     import gradientql.utils.oob as oobmod
     sleeps: list = []
-    monkeypatch.setattr(loop.time, "sleep", lambda s=0, *a, **k: sleeps.append(s))
+    monkeypatch.setattr(loop, "_sleep_or_stop", lambda s, ss=None, *a, **k: sleeps.append(s))
     monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
     monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
     monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: MockClient())
@@ -352,7 +359,7 @@ def test_backoff_ladder_resets_after_target_recovers(monkeypatch):
     # after a dead spell the sleep ladder grows (8s, 13s, ...); a successful response must
     # reset it, so a target that recovers doesn't leave the run sleeping 25s/step forever
     sleeps: list[float] = []
-    monkeypatch.setattr(loop.time, "sleep", lambda s, *a, **k: sleeps.append(s))
+    monkeypatch.setattr(loop, "_sleep_or_stop", lambda s, ss=None, *a, **k: sleeps.append(s))
     monkeypatch.setattr(loop, "get_attacker_llm", lambda settings: object())
     import gradientql.utils.oob as oobmod
     monkeypatch.setattr(oobmod, "is_enabled", lambda settings: False)
@@ -401,3 +408,22 @@ def test_periodic_reminders_are_capped(monkeypatch):
              "http://t/graphql", 20)
     fired = sum("endpoint-level tools not yet run" in p for p in prompts)
     assert 0 < fired <= 2
+
+
+def test_empty_schema_seeds_clairvoyance_fact(monkeypatch):
+    # introspection disabled -> loop.run gets an empty schema and must NOT crash; it seeds a fact
+    # steering the agent to `clairvoyance` first (and skips the misleading "no token-mint" fact).
+    import gradientql.utils.oob as oobmod
+    captured = {}
+    monkeypatch.setattr(loop, "get_attacker_llm", lambda s: object())
+    monkeypatch.setattr(loop, "get_client", lambda url, csrf_config=None: MockClient())
+    monkeypatch.setattr(oobmod, "is_enabled", lambda s: False)
+    monkeypatch.setattr(loop, "invoke_with_circuit_breaker",
+                        scripted_llm([{"action": "done", "args": {"reason": "x"}}]))
+    empty = {"_query_type": "Query", "_mutation_type": "Mutation", "Query": {}, "Mutation": {}}
+    loop.run({"target": {}, "scanner": {}}, empty, "http://t/graphql", 3,
+             progress_cb=lambda step, budget, ctx: captured.update(ctx=ctx))
+    facts = captured["ctx"].facts
+    assert any("INTROSPECTION IS DISABLED" in f for f in facts)
+    assert any("clairvoyance" in f for f in facts)
+    assert not any("NO anonymous token-minting" in f for f in facts)  # not seeded on empty schema

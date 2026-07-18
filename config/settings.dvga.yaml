@@ -23,6 +23,10 @@ scanner:
     provider: "interactsh"
     collaborator_domain: "oast.fun"
     token: ""
+  tuning:
+    # One pre-run look at the whole schema (compressed) to draft knowledge + an attack plan.
+    preflight_plan: true
+    plan_schema_char_budget: 60000
 
 embeddings:
   model: "all-MiniLM-L6-v2"

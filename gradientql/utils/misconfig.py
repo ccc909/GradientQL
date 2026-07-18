@@ -117,5 +117,59 @@ def run_misconfig_sweep(
     except (requests.RequestException, ValueError):
         pass
 
+    _probe_schema_files(target_url, sess, add)
+    _probe_hasura_run_sql(target_url, sess, add)
+
     logger.info("Misconfig sweep: %d finding(s)", len(findings))
     return findings
+
+
+_SCHEMA_FILE_PATHS = (
+    "/schema.graphql", "/schema.json", "/graphql/schema", "/graphql.schema",
+    "/api/schema.graphql", "/.well-known/graphql-schema", "/graphql.json",
+)
+_SDL_MARKERS = ("type query", "type mutation", "schema {", "\"__schema\"", "__schema{", "directive @")
+
+
+def _probe_schema_files(target_url: str, sess: requests.Session, add: Any) -> None:
+    """Flag a raw SDL / schema.json served as a static side-file (introspection-equivalent leak)."""
+    from urllib.parse import urljoin
+    for path in _SCHEMA_FILE_PATHS:
+        try:
+            r = sess.get(urljoin(target_url, path), timeout=8)
+        except requests.RequestException:
+            continue
+        if r.status_code != 200:
+            continue
+        low = (r.text or "")[:8000].lower()
+        if any(mk in low for mk in _SDL_MARKERS):
+            add(
+                "Schema File Exposed (information_disclosure)",
+                f"GET {path} serves the GraphQL schema (SDL/introspection JSON) as a static file - the full "
+                "type graph is readable even if live introspection is disabled.",
+                "medium",
+            )
+            return
+
+
+def _probe_hasura_run_sql(target_url: str, sess: requests.Session, add: Any) -> None:
+    """Flag a network-exposed Hasura run_sql metadata endpoint (arbitrary SQL without auth)."""
+    from urllib.parse import urljoin
+    probes = (
+        ("/v2/query", {"type": "run_sql", "args": {"source": "default", "sql": "SELECT 1;"}}),
+        ("/v1/query", {"type": "run_sql", "args": {"sql": "SELECT 1;"}}),
+    )
+    for path, body in probes:
+        try:
+            r = sess.post(urljoin(target_url, path), json=body, timeout=8)
+        except (requests.RequestException, ValueError):
+            continue
+        txt = (r.text or "").lower()
+        if r.status_code == 200 and ("result_type" in txt or "\"result\"" in txt):
+            add(
+                "Hasura run_sql Exposed (rce / sqli)",
+                f"POST {path} executed arbitrary SQL WITHOUT authentication (run_sql SELECT 1 returned a "
+                "result set) - full database read/write via the Hasura metadata API.",
+                "critical",
+            )
+            return

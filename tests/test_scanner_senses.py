@@ -159,3 +159,21 @@ def test_429_is_rate_limited_not_empty_and_counts_as_unresponsive():
     assert is_dead(429) is True
     assert classify_outcome(429, None, []) == "RATE-LIMITED"
     assert effective_state({"auto": "RATE-LIMITED", "attempts": 1}) == "open"
+
+
+def test_detect_file_read_passwd():
+    resp = {"data": {"pdf": "root:x:0:0:root:/root:/bin/bash"}, "_status_code": 200}
+    vt, reason = senses.detect_file_read_surface(resp)
+    assert vt and "Local File Disclosure" in vt
+    assert "passwd" in reason or "root:" in reason
+
+
+def test_detect_file_read_winini():
+    resp = {"data": {"thumb": "; for 16-bit app support\n[fonts]"}, "_status_code": 200}
+    vt, _ = senses.detect_file_read_surface(resp)
+    assert vt and "Local File Disclosure" in vt
+
+
+def test_detect_file_read_clean_negative():
+    assert senses.detect_file_read_surface({"data": {"pdf": "a normal invoice"}, "_status_code": 200}) == (None, "")
+    assert senses.detect_file_read_surface({"data": None, "_status_code": 200}) == (None, "")

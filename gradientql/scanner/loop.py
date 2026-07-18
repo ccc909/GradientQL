@@ -30,12 +30,13 @@ from .coverage import (
     unfuzzed_string_args,
     untested_high_value_fields,
 )
-from .prompt import build_prompt, extract_action
+from .prompt import build_plan_prompt, build_prompt, extract_action, parse_plan
 from .schema import (
     _SEMANTIC_INDEX_MIN_FIELDS,
     auth_mutations,
     build_schema_index,
     field_count,
+    render_schema_digest,
     render_schema_overview,
 )
 from .tracer import AgentTracer
@@ -58,6 +59,61 @@ _DONE_DEFERRALS = 2
 _HV_DEFERRALS = 2
 _COVERAGE_NUDGE_EVERY = 8
 _OOB_CHECK_DELAY = 3
+_PLAN_CHAR_BUDGET = 60000  # cap on the one-time full-schema digest fed to the pre-run planner
+
+
+_SLEEP_SLICE = 0.25
+
+
+def _sleep_or_stop(seconds: float, should_stop: Any) -> None:
+    """Sleep for ~`seconds` in fixed 0.25s slices, returning early on a stop request.
+
+    Keeps the loop responsive so a TUI/CLI quit is honored within ~0.25s even during a long
+    backoff or circuit-breaker wait - otherwise the worker thread blocks app exit (Ctrl+C spam).
+    A fixed slice count (not a wall-clock deadline) means a no-op time.sleep just iterates and
+    returns rather than busy-spinning.
+    """
+    slices = max(1, int(seconds / _SLEEP_SLICE + 0.999))
+    for _ in range(slices):
+        if should_stop is not None and should_stop():
+            return
+        time.sleep(_SLEEP_SLICE)
+
+
+def _seed_preflight_plan(llm: Any, ctx: ActionContext, target_url: str,
+                         settings: dict[str, Any], schema_map: dict[str, Any]) -> None:
+    """One-time full-schema recon: the agent drafts durable knowledge + a ranked plan before step 0.
+
+    Sends the whole schema (compressed to a budgeted digest) in a single call, then seeds the parsed
+    knowledge into ctx.facts (rendered as KNOWN every turn) and the plan into ctx.notes. Best-effort:
+    any failure is logged and swallowed so a planning hiccup never blocks the scan.
+    """
+    tuning = settings.get("scanner", {}).get("tuning", {})
+    budget_chars = int(tuning.get("plan_schema_char_budget", _PLAN_CHAR_BUDGET))
+    try:
+        digest = render_schema_digest(schema_map, char_budget=budget_chars)
+        prompt = build_plan_prompt(target_url, digest, ctx.facts)
+        msg = invoke_with_circuit_breaker(llm, prompt)
+    except Exception as e:  # noqa: BLE001
+        logger.info("AGENT: preflight plan skipped (%s)", e)
+        return
+    if msg is None:
+        logger.info("AGENT: preflight plan skipped (no LLM response)")
+        return
+    _accumulate_tokens(ctx.tokens, msg)
+    parsed = parse_plan(getattr(msg, "content", ""))
+    seeded = 0
+    for k in parsed["knowledge"]:
+        if k not in ctx.facts:
+            ctx.facts.append(k)
+            seeded += 1
+    if parsed["plan"]:
+        ctx.notes.append(
+            "INITIAL PLAN (one-time full-schema recon - follow it, adapt as you learn):\n  "
+            + "\n  ".join(parsed["plan"]))
+    logger.info("AGENT: preflight plan seeded %d knowledge fact(s), %d plan step(s)",
+                seeded, len(parsed["plan"]))
+    ctx.log(f"[plan] full-schema recon: banked {seeded} facts, {len(parsed['plan'])} plan steps")
 
 
 def _decision_target(name: str, args: dict) -> str:
@@ -171,21 +227,34 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         logger.info("AGENT: resumed run %s at step %d with %d prior finding(s)",
                     run_id or "?", start_step, len(ctx.vulns))
     else:
-        _am = auth_mutations(schema_map)
-        if _am:
-            ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])
-                             + ") - the signup/login auth chain is viable here.")
+        if field_count(schema_map) == 0:
+            ctx.facts.append(
+                "INTROSPECTION IS DISABLED/blocked - you have NO field map yet (obfuscated __schema and "
+                "GET were already tried). FIRST run `clairvoyance` to recover root fields from the server's "
+                "'did you mean' validation-error suggestions, then query the recovered fields directly to "
+                "confirm and drill them. Endpoint-level issues (GraphQL IDE, exposed SDL file, Hasura "
+                "run_sql, CSRF/CORS) are already probed automatically.")
         else:
-            ctx.facts.append("NO anonymous token-minting mutation in this schema (no login/register/token "
-                             "mutation) - auth is OUT-OF-BAND (REST/OIDC). Do NOT hunt a GraphQL login; focus "
-                             "on unauth data exposure, injection, SSRF, DoS.")
-        _sub = schema_map.get("_subscription_type")
-        if _sub:
-            _subf = [f for f in (schema_map.get(_sub) or {}) if not str(f).startswith("_")]
-            ctx.facts.append(f"A SUBSCRIPTION root ({_sub}: {', '.join(_subf[:6]) or '?'}) exists - a real "
-                             "attack surface (auth-over-subscription, connection DoS) but it needs a WebSocket/"
-                             "SSE transport this tool can't drive over HTTP. NOTE it as untested; don't burn "
-                             "steps trying to query it over POST.")
+            _am = auth_mutations(schema_map)
+            if _am:
+                ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])
+                                 + ") - the signup/login auth chain is viable here.")
+            else:
+                ctx.facts.append("NO anonymous token-minting mutation in this schema (no login/register/token "
+                                 "mutation) - auth is OUT-OF-BAND (REST/OIDC). Do NOT hunt a GraphQL login; focus "
+                                 "on unauth data exposure, injection, SSRF, DoS.")
+            _sub = schema_map.get("_subscription_type")
+            if _sub:
+                _subf = [f for f in (schema_map.get(_sub) or {}) if not str(f).startswith("_")]
+                ctx.facts.append(f"A SUBSCRIPTION root ({_sub}: {', '.join(_subf[:6]) or '?'}) exists - a real "
+                                 "attack surface (auth-over-subscription, connection DoS). Probe it with the "
+                                 "`subscribe` action (WebSocket).")
+        from .fingerprint import detect_frameworks
+        for _fwfact in detect_frameworks(schema_map):
+            ctx.facts.append(_fwfact)
+        if settings.get("scanner", {}).get("tuning", {}).get("preflight_plan", True) \
+                and field_count(schema_map) > 0 and not (should_stop is not None and should_stop()):
+            _seed_preflight_plan(llm, ctx, target_url, settings, schema_map)
 
     nudge_every = settings.get("scanner", {}).get("tuning", {}).get(
         "coverage_nudge_every", _COVERAGE_NUDGE_EVERY)
@@ -300,7 +369,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         degraded = consecutive_dead >= _DEGRADED_AT
         if degraded:
             backoffs += 1
-            time.sleep(min(5 * backoffs + 3, 25))
+            _sleep_or_stop(min(5 * backoffs + 3, 25), should_stop)
 
         nudge: list[str] = []
         recent_t = [t for t in recent_targets[-8:] if t]
@@ -377,7 +446,7 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
                 if circuit_waits >= _MAX_CIRCUIT_WAITS:
                     logger.warning("AGENT aborting: LLM provider still down after %d circuit waits", circuit_waits)
                     break
-                time.sleep(_CIRCUIT_TIMEOUT)
+                _sleep_or_stop(_CIRCUIT_TIMEOUT, should_stop)
                 continue
             detail = llm_error or "provider returned no response"
             low = detail.lower()
@@ -390,7 +459,8 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
             if consec_llm_error >= _LLM_ERROR_ABORT:
                 logger.warning("AGENT aborting: %d LLM/provider failures in a row", _LLM_ERROR_ABORT)
                 break
-            time.sleep(min(5 * consec_llm_error, 30) if is_rate_limit else min(2 * consec_llm_error, 10))
+            _sleep_or_stop(min(5 * consec_llm_error, 30) if is_rate_limit
+                           else min(2 * consec_llm_error, 10), should_stop)
             continue
 
         consec_llm_error = 0

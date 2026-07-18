@@ -53,7 +53,10 @@ semantic = [
     "faiss-cpu>=1.7.4",
     "sentence-transformers>=2.3.0",
 ]
-dev = ["pytest>=7.0", "pytest-asyncio", "ruff", "mypy"]
+# The `subscribe` action probes GraphQL-over-WebSocket subscriptions; without this extra it
+# degrades to a message telling the operator to install it.
+ws = ["websocket-client>=1.7.0"]
+dev = ["pytest>=7.0", "pytest-asyncio", "ruff", "mypy", "websocket-client>=1.7.0"]
 
 # cli() parses argv; main() is the callable API and ignores sys.argv, so the script targets cli.
 [project.scripts]

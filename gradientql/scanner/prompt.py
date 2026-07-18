@@ -73,6 +73,25 @@ first: place a real order, add a real SKU (try negative/fractional quantity for 
 vault token - set it up, THEN test. And weaponize any no-cost-limiting you confirm: alias-multiplex
 generateCustomerToken / login mutations to brute-force PAST per-request rate limits.
 
+ADVANCED VECTORS - under-tested and high-value; try each where the schema fits:
+- INTERFACE/UNION authz bypass: on an interface/union-typed field, spread a PRIVILEGED concrete type
+  (`... on AdminUser {{ ... }}`, `... on PrivateOrder {{ ... }}`) - fields whose auth the abstract type
+  didn't enforce can leak through the concrete one.
+- MASS ASSIGNMENT: on create*/update* mutations, add input fields the UI never sends (isAdmin, role,
+  verified, ownerId, price, balance, status, isPublished) - a resolver that blindly binds input grants them.
+- OPERATION-NAME confusion: put TWO named operations in one document + operationName - an authz proxy /
+  WAF / persisted-op gate that inspects the first or wrong operation gets bypassed.
+- INTROSPECTION that looks blocked: beat a naive __schema/IntrospectionQuery filter by obfuscating -
+  aliases (`{{ a: __schema {{ ... }} }}`), comments/newlines inside the word, or try introspection over GET.
+  If still blocked, run `clairvoyance` to rebuild the schema from error suggestions.
+- WAF / rate-limit evasion: GraphQL ignores commas + extra whitespace/comments between tokens (use them to
+  break up flagged strings); alias-multiplex to beat per-operation rate limits; retry a blocked request as
+  GET, under a different Content-Type, or via the HTTP QUERY method.
+- FIELD-MERGING smuggling: the SAME field name twice (no alias) with DIFFERENT args/directives can make a
+  buggy server merge them unexpectedly - a WAF/authz-visible arg on one, the real one on the other.
+- PERSISTED QUERIES: if only operation hashes are accepted, harvest operation IDs from the site's JS
+  bundles/source maps and replay them; probe APQ by sending a fabricated sha256Hash.
+
 CURRENT IDENTITY (sent on every graphql call): {identity}
 BUDGET: {remaining} actions left.
 {steering}
@@ -147,10 +166,13 @@ _ACTION_DOCS: dict[str, str] = {
   subfields you've verified via search_schema/__type. On a validation error ("Cannot query
   field X", "argument is required", "Unknown argument"), the field you actually care about was
   NOT tested - RE-RUN IT ALONE before giving up on it.""",
-    "fuzz": """- fuzz: args {field, arg, classes?: ["ssti","cmdi","sqli","nosql","traversal","ssrf","coercion","enum"],
+    "fuzz": """- fuzz: args {field, arg, classes?: ["ssti","cmdi","sqli","nosql","traversal","ssrf","render","crlf","coercion","enum"],
   payloads?: ["...your OWN payloads..."], path?, input?, selection?} - fire a payload battery at
   ONE field's string target in a single turn (each payload is sent as a variable, so it reaches the
-  resolver intact). Auto-detects eval/error/reflection/diff per payload and uses an OOB URL for ssrf.
+  resolver intact). Auto-detects eval/error/reflection/diff per payload and injects an OOB URL for
+  ssrf/render/crlf. classes:["render"] targets fields that render HTML/URL to PDF/PNG/thumbnail
+  (file:// local-file read auto-confirms; iframe/img reach internal/metadata URLs). classes:["crlf"]
+  tests args copied into an outbound header/redirect/log (CR/LF header injection & response splitting).
   pass your own payloads and/or pick classes. Top-level arg: {"field":"echo","arg":"text","classes":["ssti","cmdi"]}.
   NESTED string field inside an input object (the common case for create*/*Input mutations): set
   `arg` to the input arg, `path` to the leaf, and `input` to the FULL base object with valid filler
@@ -189,10 +211,21 @@ _ACTION_DOCS: dict[str, str] = {
   so CONCEPTS work, not just exact names: "login" surfaces generateCustomerToken, "admin"
   surfaces privileged mutations. Lines prefixed "~ ... (semantic)" are fuzzy matches.""",
     "note": """- note: args {text} - append to your notes.""",
-    "forge_jwt": """- forge_jwt: args {approach: "none"|"weak_secret"|"kid", secret?, claims?} - mint a
-  forged JWT (alg:none / weak HMAC secret / kid path-traversal), tampering a harvested
-  token's claims. approach "weak_secret" with NO secret tries a built-in list of common
-  secrets in one go. Returns a token. Test acceptance BOTH ways: (a) adopt it with set_identity
+    "clairvoyance": """- clairvoyance: args {wordlist?} - when introspection is DISABLED, rebuild the
+  schema from validation-error suggestions: fires common field names and mines "did you mean X, Y"
+  + needs-selection errors to recover valid root fields, merging them into your map. Use it the
+  moment __schema is blocked; pass your own wordlist:[...] to target a domain.""",
+    "forge_jwt": """- forge_jwt: args {approach, secret?, claims?} - mint a forged JWT, tampering a
+  harvested token's claims. approach is one of:
+    none         - alg:none (unsigned)
+    weak_secret  - HS256; with NO secret, tries a built-in common-secret list in one go
+    kid          - kid path-traversal to /dev/null (empty-key HMAC)
+    kid_sqli     - kid SQL/command-injects the key lookup so it returns a value we sign with
+    confusion    - RS256->HS256 alg confusion: auto-fetches the server's RSA public key from
+                   JWKS and HMAC-signs with it (or pass secret:'<PEM>')
+    jwk          - embeds an attacker RSA key in the token's jwk header, self-signed (RS256)
+    psychic      - ECDSA r=s=0 zero-signature (CVE-2022-21449) for ES256 verifiers
+  Returns a token. Test acceptance BOTH ways: (a) adopt it with set_identity
   (Authorization: Bearer ...); (b) if a field takes a token/jwt/auth arg (e.g. me(token:)),
   pass the token INTO that field via graphql - some servers read the JWT from a field argument,
   not the header. Paste the token VERBATIM (an alg:none JWT ends in a trailing '.' - keep it, or
@@ -206,6 +239,22 @@ _ACTION_DOCS: dict[str, str] = {
   fragment, stacked-directive flood, complexity overflow, or a huge-page-size pagination request);
   auto-confirms if the server accepts it with no cost/depth/directive/page limiting.""",
     "smuggle": """- smuggle: args {} - run HTTP request-smuggling / desync probes (raw sockets).""",
+    "race": """- race: args {query|template+values, variables?, n?} - fire ONE operation N times
+  SIMULTANEOUSLY (barrier-synced) to test a concurrency/TOCTOU race. SET UP the single-use state
+  FIRST (mint a one-time coupon, fund a balance, request an OTP, pick a unique value), THEN race the
+  redeem/withdraw/claim/apply mutation. Reports how many raced copies succeeded with no serializing
+  error - if a SINGLE-USE op succeeds >1×, that's a limit-overrun/double-spend race (verify the effect
+  before report_finding). Racing a plain read or idempotent op proves nothing.""",
+    "subscribe": """- subscribe: args {field?} - probe GraphQL SUBSCRIPTIONS over WebSocket (the one
+  transport regular graphql calls can't reach). Auto-tests: legacy graphql-ws subprotocol DOWNGRADE,
+  PRE-HANDSHAKE auth bypass (a subscribe accepted before connection_init), and UNAUTHENTICATED data
+  over a subscription (subscription resolvers often skip the auth queries/mutations enforce). Use it
+  whenever KNOWN says a subscription root exists.""",
+    "defer": """- defer: args {query?} - probe @defer/@stream incremental delivery. Detects whether the
+  server streams a multipart/mixed response (auto-builds a probe query if you don't pass one). If
+  SUPPORTED it's a DoS-amplification (many `... @defer` fragments -> many chunks), response-desync, and
+  DEFERRED-FIELD-AUTHZ surface - a sensitive field behind @defer can leak if auth runs only on the
+  initial selection.""",
     "csrf": """- csrf: args {} - PROBE the live endpoint for CSRF (GET-based execution) + CORS reflection,
   reported honestly. A CSRF finding REQUIRES a state-changing op runnable via GET (0 mutations
   = no classic CSRF); a CORS finding REQUIRES arbitrary-Origin reflection WITH credentials. Do
@@ -303,6 +352,72 @@ def build_prompt(ctx: dict[str, Any]) -> str:
         decisions=decisions, recorded=recorded,
         actions_doc=_render_actions_doc(set(ctx.get("disabled_tools") or [])),
     )
+
+
+_PLAN_SYSTEM = """You are an autonomous GraphQL security agent about to test {url}. BEFORE the run you
+get ONE look at the COMPRESSED FULL SCHEMA below - the entire attack surface at once. During the run you
+will only see the root-field map plus whatever you `search_schema`/`__type` for, so use this moment to
+ORIENT and draft a plan you'll carry the whole run.
+
+WHAT YOU ALREADY KNOW:
+{facts}
+
+COMPRESSED FULL SCHEMA (SDL-ish; descriptions stripped, Relay boilerplate collapsed, `!`=required,
+nested field args shown by NAME only, sections truncated with +N markers):
+{digest}
+
+Think about where REAL bugs live, and name CONCRETE fields from THIS schema (never generic advice):
+- broken object/function-level auth (BOLA/IDOR/BFLA) on customer / order / payment / admin fields
+- auth-token-mint, impersonation, password-reset, account-destruct mutations
+- injection sinks: string / filter / search / id / path args (the boring list-query filter arg is often
+  the real SQLi sink, not the field literally named "search")
+- SSRF: url / uri / webhook / redirect / image / fetch args
+- DoS surface (deep nesting, aliasable fields, batching) and business logic (price / quantity / coupon)
+
+Output EXACTLY ONE JSON object, nothing else:
+{{"knowledge": ["<durable FACT about THIS schema you want to remember - concrete, e.g. 'generateCustomerToken and generateCustomerTokenAsAdmin both exist; the AsAdmin variant is a token-mint/impersonation lead'>", "... up to 8"],
+  "plan": ["<ranked concrete objective naming the FIELD and the VECTOR, highest-value first, e.g. 'auth_test generateCustomerTokenAsAdmin anon vs user vs forged-admin - BFLA token mint'>", "... up to 8"]}}
+`knowledge` = things that are TRUE about the schema (not intentions - 'testing X' is not a fact).
+`plan` = the ordered attack sequence you'll follow. Be specific to the fields above. Output ONLY the JSON."""
+
+
+def build_plan_prompt(target_url: str, digest: str, facts: list[str] | None) -> str:
+    """Assemble the one-time pre-run planning prompt from the compressed full-schema digest."""
+    facts_block = "\n".join(f"  - {f}" for f in (facts or [])) or "  (none yet)"
+    return _PLAN_SYSTEM.format(url=target_url, facts=facts_block, digest=digest)
+
+
+def _scan_for_keys(text: str, keys: tuple[str, ...]) -> dict[str, Any] | None:
+    """Left-to-right scan for the first JSON object carrying any of `keys`."""
+    decoder = json.JSONDecoder(strict=False)
+    start = text.find("{")
+    while start != -1:
+        try:
+            obj, _ = decoder.raw_decode(text, start)
+        except (json.JSONDecodeError, ValueError):
+            obj = None
+        if isinstance(obj, dict) and any(k in obj for k in keys):
+            return obj
+        start = text.find("{", start + 1)
+    return None
+
+
+def parse_plan(text: str, cap: int = 8) -> dict[str, list[str]]:
+    """Extract {{knowledge, plan}} string lists from a planning response, capped and cleaned.
+
+    Tolerates prose around the JSON and a lone string in place of a list; returns empty lists when
+    nothing parseable is present so the caller can no-op safely.
+    """
+    obj = _scan_for_keys(text or "", ("plan", "knowledge")) or {}
+
+    def _as_list(v: Any) -> list[str]:
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str) and v.strip():
+            return [v.strip()]
+        return []
+
+    return {"knowledge": _as_list(obj.get("knowledge"))[:cap], "plan": _as_list(obj.get("plan"))[:cap]}
 
 
 def _scan_for_action(text: str) -> dict[str, Any] | None:
