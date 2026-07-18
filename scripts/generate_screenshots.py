@@ -1,11 +1,5 @@
-"""Generate the TUI screenshots used in the README.
-
-Menu and settings are drawn from illustrative demo state. The dashboard is rendered from the
-newest real run checkpoint in output/checkpoints (an actual DVGA scan), so the live screen shows
-real findings, loot, and coverage; it falls back to demo state when no checkpoint is present. The
-output is SVG so it renders crisply on GitHub without a rasterizer. Run with
-`python scripts/generate_screenshots.py`; only textual and rich are required.
-"""
+"""Generate the README TUI screenshots. Menu and settings use demo state; the dashboard renders
+from the newest run checkpoint (a real DVGA scan) when one exists, else demo state."""
 from __future__ import annotations
 
 import asyncio
@@ -88,8 +82,7 @@ def _checkpoint_ctx() -> tuple[SimpleNamespace, int, int] | None:
 async def main() -> None:
     warnings.filterwarnings("ignore")
     DOCS.mkdir(exist_ok=True)
-    # No-op the scan worker: we drive the dashboard panes by hand, no target or model calls.
-    tui.DashboardScreen.run_scan = lambda self: None
+    tui.DashboardScreen.run_scan = lambda self: None  # no-op the scan worker; we drive the panes
 
     app = tui.GradientQLApp(DEMO_SETTINGS, TARGET_URL)
     async with app.run_test(size=MENU_SIZE) as pilot:

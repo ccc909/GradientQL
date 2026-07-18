@@ -1,9 +1,7 @@
 name: Screenshots
 
-# Regenerate the demo README screenshots (menu, settings) whenever the TUI or the generator
-# changes, and commit them back. docs/dashboard.svg is a real DVGA scan capture committed by
-# hand: CI has no run checkpoint to render it from, so it is deliberately left untouched here.
-# Also runnable on demand from the Actions tab.
+# Regenerate the demo screenshots (menu, settings) on TUI/generator changes and commit them.
+# docs/dashboard.svg is a hand-committed real capture, so it is left untouched here.
 on:
   push:
     branches: [main]
