@@ -23,6 +23,9 @@ disproves are retracted, so the report you read at the end is one you can act on
   <tr>
     <td align="center" colspan="2"><a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/dashboard.svg"><img src="docs/dashboard.svg" alt="GradientQL live dashboard" width="960"></a><br><sub>Live dashboard during a scan: coverage map, activity feed, loot, and findings (illustrative data)</sub></td>
   </tr>
+  <tr>
+    <td align="center" colspan="2"><a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/model_comparison.svg"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="760"></a><br><sub>Detection results: the runs (of five) in which each model found each DVGA vulnerability category</sub></td>
+  </tr>
 </table>
 
 > [!WARNING]
@@ -210,14 +213,10 @@ earn one itself through the signup, email confirmation, and login flow using the
 Against a fresh
 [Damn Vulnerable GraphQL Application](https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application)
 (DVGA), the standard intentionally-vulnerable GraphQL target, three models were each run five times
-at a 30-step budget with the default attack configuration. Each row is one vulnerability category;
-the filled segments are the runs (out of five) in which that model found it.
-
-<a href="https://raw.githubusercontent.com/ccc909/GradientQL/refs/heads/main/docs/model_comparison.svg"><img src="docs/model_comparison.svg" alt="DVGA detection rate by category and model, five runs at a 30-step budget" width="760"></a>
-
-All three find the easy categories (introspection, batch-query denial of service, stack-trace
-leakage) in nearly every run, and separate on the multi-step authentication chains, where glm is
-strongest. Mean findings per run: glm 7.4, qwen 6.0, gpt-oss 4.8.
+at a 30-step budget with the default attack configuration; the per-category detection results are in
+the chart at the top of this page. All three find the easy categories (introspection, batch-query
+denial of service, stack-trace leakage) in nearly every run, and separate on the multi-step
+authentication chains, where glm is strongest. Mean findings per run: glm 7.4, qwen 6.0, gpt-oss 4.8.
 
 Given a larger budget, the strongest model goes deeper. In a single 200-step run, glm self-terminated
 at step 119 with **20 findings** and no false positives: it used a confirmed command injection to read
