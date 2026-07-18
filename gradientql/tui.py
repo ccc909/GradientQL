@@ -53,7 +53,7 @@ _GLYPH: dict[str, tuple[str, str]] = {
     "data": ("+", "green"),
     "dead": ("x", "grey37"),
     "finding": ("!", "bold red"),
-    "exploited": ("*", "bold magenta"),
+    "exploited": ("!", "bold magenta"),
 }
 
 _ATTACK_DEFAULTS = [("injection", True), ("ssrf", True), ("dos", False), ("smuggle", True),
