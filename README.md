@@ -61,6 +61,11 @@ disposable mailbox, and logging in), and the individual attack techniques.
 
 ## Quickstart
 
+**Run it in your browser.** Open the notebook in Google Colab and step through it to scan the bundled
+DVGA target with no local install (you supply an OpenRouter key):
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ccc909/GradientQL/blob/main/notebooks/gradientql_dvga.ipynb)
+
 **Try it in one command.** Scan the bundled
 [DVGA](https://github.com/dolevf/Damn-Vulnerable-GraphQL-Application) target with Docker, no local
 install needed:
