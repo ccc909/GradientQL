@@ -580,6 +580,29 @@ class GraphQLClient:
     def introspect(self) -> dict[str, Any]:
         logger.info("Running introspection on %s", self.url)
         result = self.execute(INTROSPECTION_QUERY)
-        if result.get("errors"):
-            logger.warning("Introspection returned errors: %s", result["errors"])
-        return result
+        if not (result.get("errors") and not result.get("data")):
+            if result.get("errors"):
+                logger.warning("Introspection returned errors: %s", result["errors"])
+            return result
+        # Standard introspection was blocked - try naive-filter bypasses before giving up.
+        return self._introspect_bypass(result)
+
+    def _introspect_bypass(self, blocked: dict[str, Any]) -> dict[str, Any]:
+        """Retry introspection past a naive filter: anonymous operation name, then over GET."""
+        # Filters often key on the "IntrospectionQuery" operation name or POST-only.
+        anon = INTROSPECTION_QUERY.replace("query IntrospectionQuery {", "query {", 1)
+        r = self.execute(anon)
+        if isinstance(r.get("data"), dict) and r["data"].get("__schema"):
+            logger.info("Introspection recovered via anonymous-operation bypass")
+            return r
+        try:
+            gr = self.session.get(self.url, params={"query": anon}, timeout=self._timeout)
+            j = gr.json()
+            if isinstance(j, dict) and isinstance(j.get("data"), dict) and j["data"].get("__schema"):
+                logger.info("Introspection recovered over GET")
+                return {"data": j["data"], "errors": j.get("errors") or [],
+                        "_status_code": gr.status_code}
+        except (requests.RequestException, ValueError):
+            pass
+        logger.warning("Introspection blocked and bypasses failed: %s", blocked.get("errors"))
+        return blocked

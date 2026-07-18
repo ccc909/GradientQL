@@ -218,6 +218,9 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     led["attempts"] += 1
     led["step"] = ctx.step
     led["auto"] = classify_outcome(status, data, errors)
+    # remember THIS field's request so a later report_finding on it reconstructs the right curl,
+    # not whatever unrelated probe happened to run last.
+    led["req"] = dict(getattr(ctx.client, "last_request", None) or {})
     err_s = "; ".join(str(e.get("message", e))[:_OBS_ERR_CHARS] for e in errors[:4]) if errors else ""
     led["sig"] = failmsg or (err_s[:160] if err_s else ("null" if is_empty else ""))
     full_data_s = json.dumps(data, default=str) if data else "null"
@@ -351,11 +354,26 @@ def _severity_to_score(sev: object) -> float:
     return _SEVERITY_SCORE.get(str(sev or "").strip().lower(), 2.5)
 
 
+def _target_field(target: str) -> str:
+    """Reduce a model-written target ('Query.users', 'users(id:)', 'the users field') to a field key."""
+    t = (target or "").strip()
+    t = t.split()[0] if t else ""
+    t = t.split(".")[-1]
+    return re.sub(r"[^A-Za-z0-9_].*$", "", t)
+
+
 @action("report_finding")
 def handle_report_finding(ctx: ActionContext, args: dict) -> Result:
     vt = str(args.get("vuln_type", "Finding"))
     target = str(args.get("target", ""))
-    ok = ctx.record(vt, target, str(args.get("evidence", "")), _severity_to_score(args.get("severity")))
+    # Attach the request for the REPORTED field (from its ledger entry), not client.last_request -
+    # the model often reports a finding it confirmed several probes ago, so last_request is unrelated.
+    entry = ctx.ledger.get(_target_field(target))
+    req = entry.get("req") if isinstance(entry, dict) and isinstance(entry.get("req"), dict) and entry.get("req") else None
+    if req is None:
+        req = {"url": ctx.target_url, "payload": {}, "headers": dict(ctx.identity or {})}
+    ok = ctx.record(vt, target, str(args.get("evidence", "")),
+                    _severity_to_score(args.get("severity")), req=req)
     ctx.log(f"[{ctx.step}] report_finding: {vt} on {target}")
     if not ok:
         return Result(observation=(f"NOT recorded - {vt} on {target or 'endpoint'} duplicates an existing "

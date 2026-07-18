@@ -268,7 +268,7 @@ def test_fuzz_ssrf_oob_url_survives_truncation_when_combined():
     sent = [v.get("p") for _q, v in client.calls]
     assert "http://oob.example/abc" in sent
     assert "http://169.254.169.254/latest/meta-data/" in sent
-    assert "OOB URL injected" in res.observation
+    assert "callback URL injected" in res.observation
 
 
 def test_fuzz_honors_max_payloads_override():
@@ -386,3 +386,39 @@ def test_fuzz_coercion_with_injection_class_flags_dropped():
     res = dispatch("fuzz", _ctx(_C(), sm), {"field": "paste", "arg": "id", "classes": ["coercion", "ssti"]})
     assert "coercion paste(id)" in res.observation
     assert "NOT run this turn" in res.observation and "ssti" in res.observation
+
+
+def test_fuzz_render_confirms_local_file_read():
+    # a headless-render field that reads file:// and reflects the artifact content
+    def t(p):
+        if "file:///etc/passwd" in p:
+            return {"data": {"echo": "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:"},
+                    "errors": [], "_status_code": 200}
+        return {"data": {"echo": "rendered"}, "errors": [], "_status_code": 200}
+
+    client = _VarClient(t)
+    ctx = _ctx(client, _schema())
+    res = dispatch("fuzz", ctx, {"field": "echo", "arg": "text", "classes": ["render"]})
+    assert res.touched_target
+    assert any("Local File Disclosure" in v["vuln_type"] for v in ctx.vulns)
+    # must NOT be mislabeled as RCE
+    assert not any("Command Injection" in v["vuln_type"] for v in ctx.vulns)
+    assert "CONFIRMED" in res.observation
+
+
+def test_fuzz_crlf_reflection_is_lead_not_autoconfirm():
+    def t(p):
+        return {"data": {"echo": p}, "errors": [], "_status_code": 200}  # plain echo
+
+    client = _VarClient(t)
+    ctx = _ctx(client, _schema())
+    res = dispatch("fuzz", ctx, {"field": "echo", "arg": "text", "classes": ["crlf"]})
+    assert res.touched_target
+    # a pure echo of CRLF payloads is a lead/reflector, never an auto-recorded finding
+    assert ctx.vulns == []
+
+
+def test_fuzz_render_and_crlf_registered_classes():
+    from gradientql.scanner.payloads import CLASS_PROBES
+    assert "render" in CLASS_PROBES and "crlf" in CLASS_PROBES
+    assert any("file:///etc/passwd" in p for p in CLASS_PROBES["render"])

@@ -11,7 +11,15 @@ from . import action
 from .context import ActionContext, Result
 from ..memory import blank_entry, identity_label
 from ..payloads import CLASS_PROBES, DEFAULT_CLASSES, ssti_hit
-from ..senses import detect_injection_surface, detect_server_error_surface, is_dead
+from ..senses import (
+    detect_file_read_surface,
+    detect_injection_surface,
+    detect_server_error_surface,
+    is_dead,
+)
+
+# Classes that reach an outbound server-side fetch, so an OOB callback URL is worth injecting.
+_OOB_CLASSES = ("ssrf", "render", "crlf")
 
 _CANARY = "FZc4n4ry7q"
 _MAX_PAYLOADS = 14
@@ -160,10 +168,16 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
     cap = ctx.settings.get("scanner", {}).get("fuzz", {}).get("max_payloads", _MAX_PAYLOADS)
     payloads = payloads[:cap]
 
-    if "ssrf" in requested and ctx.oob_sess is not None:
+    oob_cls = next((c for c in _OOB_CLASSES if c in requested), None)
+    if oob_cls and ctx.oob_sess is not None:
         try:
             url, _label = ctx.oob_sess.issue({"approach": "fuzz", "node": label})
-            payloads.append(("ssrf", url))
+            if oob_cls == "render":
+                payloads.append(("render", f"<iframe src='{url}'></iframe>"))
+            elif oob_cls == "crlf":
+                payloads.append(("crlf", f"gqlcrlf\r\nLocation: {url}"))
+            else:
+                payloads.append(("ssrf", url))
         except Exception:  # noqa: BLE001
             pass
     if not payloads:
@@ -183,7 +197,7 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
 
     results: list[dict] = []
     confirmed: list[tuple[str, str, str]] = []
-    has_ssrf = any(cls == "ssrf" for cls, _ in payloads)
+    has_oob = any(cls in _OOB_CLASSES for cls, _ in payloads)
     sent_counts: dict[str, int] = {}
     consec_dead_sends = 0
     aborted = False
@@ -210,7 +224,11 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
         tags: list[str] = []
 
         det_q = f"{label}: {json.dumps(payload)}"
-        vt, reason = detect_injection_surface(det_q, resp)
+        vt, reason = (None, "")
+        if cls in ("render", "ssrf"):  # file:// local-file read gets its own label, not RCE
+            vt, reason = detect_file_read_surface(resp)
+        if not vt:
+            vt, reason = detect_injection_surface(det_q, resp)
         if not vt:
             vt, reason = detect_server_error_surface(resp)
         if vt:
@@ -238,7 +256,7 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
 
     for vt, payload, reason in confirmed:
         ctx.record(vt, label, f"payload={payload!r}; {reason}", 3.0)
-    if has_ssrf and ctx.oob_sess is not None:
+    if has_oob and ctx.oob_sess is not None:
         ctx.oob_injected_at = ctx.step
 
     idlabel = identity_label(ctx.identity)
@@ -267,8 +285,8 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
         else:
             head = ("no auto-signal across payloads - per-payload outcomes:\n  "
                     + "\n  ".join(_line(r) for r in results))
-    ssrf_note = ("  [ssrf: OOB URL injected - run `oob_url op:check` in a few steps to confirm blind SSRF]"
-                 if has_ssrf else "")
+    ssrf_note = ("  [oob: callback URL injected - run `oob_url op:check` in a few steps to confirm a "
+                 "blind SSRF/render/CRLF hit]" if has_oob else "")
     if aborted:
         ssrf_note += ("  [BATTERY ABORTED - target stopped answering (3 dead responses in a row); "
                       "the un-sent payloads were NOT burned - re-fuzz after it recovers]")

@@ -151,3 +151,20 @@ def test_prompt_teaches_results_not_intent_for_learned():
     p = " ".join(prompt.build_prompt(_ctx(sm)).split())  # normalize line wraps
     assert "never a plan or intention" in p
     assert "batch_brute` with a dictionary" in p  # no single-guess logins
+
+
+def test_build_prompt_advertises_advanced_vectors(sample_introspection_result):
+    sm = parse_schema(sample_introspection_result)
+    p = prompt.build_prompt(_ctx(sm))
+    assert "ADVANCED VECTORS" in p
+    assert "MASS ASSIGNMENT" in p
+    assert "OPERATION-NAME confusion" in p
+    assert "clairvoyance" in p            # new action in the menu
+    assert "INTERFACE/UNION authz bypass" in p
+
+
+def test_forge_jwt_doc_lists_new_approaches(sample_introspection_result):
+    sm = parse_schema(sample_introspection_result)
+    p = prompt.build_prompt(_ctx(sm))
+    for approach in ("confusion", "jwk", "psychic", "kid_sqli"):
+        assert approach in p

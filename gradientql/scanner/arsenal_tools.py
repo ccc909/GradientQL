@@ -66,9 +66,11 @@ def tool_dos(client: Any, schema_map: dict[str, Any], dos_kind: str,
 
 def tool_forge_jwt(approach: str, secret: str | None, claims: dict | None,
                    harvested: dict[str, list[str]]) -> str:
-    """Forge a JWT for the chosen attack (alg:none, weak-secret HS256, or kid traversal).
+    """Forge a JWT for the chosen attack, seeding claims from a harvested token then overlaying `claims`.
 
-    Seeds claims from a previously harvested JWT payload, then overlays `claims`.
+    Approaches: none (alg:none), weak_secret (HS256 w/ given secret), kid (path traversal),
+    kid_sqli (kid injects the key), jwk (embed attacker key in header), psychic (ECDSA r=s=0),
+    confusion/rs256 (HS256 signed with the RSA public key in `secret`, resolved by the caller).
     """
     from ..utils import jwt_attacks
     base: dict[str, Any] = {}
@@ -79,6 +81,14 @@ def tool_forge_jwt(approach: str, secret: str | None, claims: dict | None,
     if isinstance(claims, dict):
         base = {**base, **claims}
     a = (approach or "none").lower()
+    if "confus" in a or "rs256" in a or "alg_conf" in a:
+        return jwt_attacks.forge_alg_confusion(secret or "", base)
+    if "jwk" in a:
+        return jwt_attacks.forge_jwk_injection(base)
+    if "psychic" in a or "zero" in a or "r=s" in a:
+        return jwt_attacks.forge_psychic(base)
+    if "kid" in a and ("sql" in a or "inject" in a or "command" in a):
+        return jwt_attacks.forge_kid_injection(base, "command" if "command" in a else "sqli")
     if "weak" in a or "secret" in a:
         return jwt_attacks.forge_hs256(secret or "secret", base)
     if "kid" in a:

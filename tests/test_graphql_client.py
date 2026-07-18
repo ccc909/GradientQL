@@ -37,3 +37,51 @@ def test_delay_throttles_before_request(monkeypatch):
     c = GraphQLClient(URL, http={"delay": 0.25})
     c._throttle()
     assert slept == [0.25]
+
+
+# --- introspection bypass when a naive filter blocks the standard query ------ #
+
+_BLOCKED = {"data": None, "errors": [{"message": "GraphQL introspection is not allowed"}], "_status_code": 200}
+_SCHEMA = {"data": {"__schema": {"queryType": {"name": "Query"}, "types": []}}, "_status_code": 200}
+
+
+def test_introspect_bypass_anonymous_operation(monkeypatch):
+    c = GraphQLClient(URL)
+    calls = []
+
+    def fake_exec(q, variables=None, extra_headers=None):
+        calls.append(q)
+        # standard named IntrospectionQuery is blocked; the anonymous "query {" variant works
+        return _BLOCKED if "IntrospectionQuery" in q else _SCHEMA
+
+    monkeypatch.setattr(c, "execute", fake_exec)
+    r = c.introspect()
+    assert r["data"]["__schema"]
+    assert any("IntrospectionQuery" not in q for q in calls)  # a bypass variant was tried
+
+
+def test_introspect_bypass_over_get(monkeypatch):
+    c = GraphQLClient(URL)
+    monkeypatch.setattr(c, "execute", lambda *a, **k: _BLOCKED)  # POST always blocked
+
+    class _R:
+        status_code = 200
+
+        def json(self):
+            return {"data": {"__schema": {"queryType": {"name": "Query"}, "types": []}}}
+
+    monkeypatch.setattr(c.session, "get", lambda url, params=None, timeout=None: _R())
+    r = c.introspect()
+    assert r["data"]["__schema"]
+
+
+def test_introspect_all_blocked_returns_failure(monkeypatch):
+    c = GraphQLClient(URL)
+    monkeypatch.setattr(c, "execute", lambda *a, **k: _BLOCKED)
+
+    def _boom(*a, **k):
+        raise graphql_client.requests.RequestException("nope")
+
+    monkeypatch.setattr(c.session, "get", _boom)
+    r = c.introspect()
+    assert r.get("errors") and not r.get("data")  # honest failure, still non-fatal upstream

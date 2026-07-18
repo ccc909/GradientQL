@@ -58,6 +58,7 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
     clear_client_cache()
     csrf = settings.get("target", {}).get("csrf")
     client = get_client(target_url, csrf_config=csrf, http=settings.get("http", {}))
+    introspection_ok = True
     if resume is not None:
         schema_map = resume.get("schema_map") or {}
         try:  # introspection normally primes the session (CSRF token/cookies); warm it up on resume
@@ -70,22 +71,26 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
     else:
         logger.info("AGENT MODE: introspecting %s", target_url)
         raw = client.introspect()
-        if raw.get("errors") and not raw.get("data"):
-            logger.error("Agent mode requires introspection, which failed: %s", raw.get("errors"))
+        introspection_ok = not (raw.get("errors") and not raw.get("data"))
+        if introspection_ok:
+            schema_map = parse_schema(raw)
+            logger.info("AGENT MODE: schema parsed (%d types). Handing control to the model.",
+                        len([k for k in schema_map if not k.startswith("_")]))
+        else:
+            # Introspection is disabled/blocked - do NOT abort. Endpoint-level probes (misconfig sweep,
+            # SDL/run_sql) still run, and the agent recovers the surface with `clairvoyance` (suggestion
+            # oracle) and query-name probing. Start from empty roots.
             errs = raw.get("errors")
-            detail = ""
-            if isinstance(errs, list) and errs and isinstance(errs[0], dict):
-                detail = str(errs[0].get("message", ""))[:160]
-            return {"vulnerabilities": [], "interactions": [], "steps": 0, "target_url": target_url,
-                    "run_id": run_id, "error": f"introspection failed: {detail or errs}"}
-        schema_map = parse_schema(raw)
-        logger.info("AGENT MODE: schema parsed (%d types). Handing control to the model.",
-                    len([k for k in schema_map if not k.startswith("_")]))
+            detail = str(errs[0].get("message", ""))[:160] if isinstance(errs, list) and errs and isinstance(errs[0], dict) else ""
+            logger.warning("AGENT MODE: introspection blocked (%s) - proceeding schema-less; the agent "
+                           "will recover the surface via clairvoyance / obfuscated introspection.", detail or errs)
+            schema_map = {"_query_type": "Query", "_mutation_type": "Mutation",
+                          "_subscription_type": "", "Query": {}, "Mutation": {}}
 
     vulns: list[dict[str, Any]] = []
     try:
         from ..utils.misconfig import run_misconfig_sweep
-        for f in run_misconfig_sweep(target_url, introspection_succeeded=True,
+        for f in run_misconfig_sweep(target_url, introspection_succeeded=introspection_ok,
                                      session=getattr(client, "session", None)):
             v = {"vuln_type": f["vuln_type"], "target_node": f.get("target_node", "endpoint"),
                  "query": "", "variables": {}, "evidence": f.get("evidence", ""), "score": 2.0,

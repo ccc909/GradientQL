@@ -244,3 +244,72 @@ def test_prevalidate_nested_via_variable_not_inspected():
     # input passed wholly via a $var -> conservative -> do NOT block
     assert prevalidate.prevalidate_query(
         'query Q($i: CiLintInput!) { ciLint(input: $i) { valid } }', {"i": {}}, sm) is None
+
+
+# --- exit hang: interruptible sleep honors should_stop ---------------------- #
+
+def test_sleep_or_stop_returns_immediately_when_stopped():
+    import time
+    from gradientql.scanner.loop import _sleep_or_stop
+    t0 = time.monotonic()
+    _sleep_or_stop(30, lambda: True)          # a 30s wait must return at once
+    assert time.monotonic() - t0 < 1.0
+
+
+def test_sleep_or_stop_waits_when_not_stopped():
+    import time
+    from gradientql.scanner.loop import _sleep_or_stop
+    t0 = time.monotonic()
+    _sleep_or_stop(0.4, lambda: False)
+    assert time.monotonic() - t0 >= 0.3
+
+
+# --- report_finding attaches the reported field's request, not last_request - #
+
+def _report_ctx(last_query):
+    from gradientql.scanner.actions.context import ActionContext
+
+    class _C:
+        session = None
+        last_request = {"url": "http://t/graphql",
+                        "payload": {"query": last_query}, "headers": {}}
+
+    return ActionContext(client=_C(), schema_map={}, schema_index=None, settings={},
+                         target_url="http://t/graphql", identity={})
+
+
+def test_report_finding_uses_target_field_request():
+    from gradientql.scanner.actions import dispatch
+    ctx = _report_ctx("query { posts { id } }")          # last probe was posts
+    ctx.ledger["users"] = {"req": {"url": "http://t/graphql",
+                                   "payload": {"query": "query { users { id email } }"}, "headers": {}}}
+    dispatch("report_finding", ctx, {"vuln_type": "BOLA/IDOR", "target": "Query.users",
+                                     "evidence": "read another user", "severity": "high"})
+    v = ctx.vulns[0]
+    assert "users" in v["request"]["payload"]["query"]
+    assert "posts" not in v["request"]["payload"]["query"]   # the bug: was grabbing last_request
+
+
+def test_report_finding_fallback_avoids_unrelated_request():
+    import json
+    from gradientql.scanner.actions import dispatch
+    ctx = _report_ctx("query { posts { id } }")
+    dispatch("report_finding", ctx, {"vuln_type": "X", "target": "unknownField", "evidence": "e"})
+    v = ctx.vulns[0]
+    assert "posts" not in json.dumps(v.get("request") or {})  # no misleading query attached
+    assert (v["request"] or {}).get("url") == "http://t/graphql"
+
+
+def test_target_field_normalization():
+    from gradientql.scanner.actions.graphql import _target_field
+    assert _target_field("Query.users") == "users"
+    assert _target_field("users(id: 5)") == "users"
+    assert _target_field("generateCustomerTokenAsAdmin") == "generateCustomerTokenAsAdmin"
+
+
+# --- map glyph: exploited must render as '!', not '*' ----------------------- #
+
+def test_exploited_glyph_is_bang():
+    from gradientql.tui import _GLYPH
+    assert _GLYPH["exploited"][0] == "!"
+    assert _GLYPH["finding"][0] == "!"

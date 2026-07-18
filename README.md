@@ -35,9 +35,10 @@ disproves are retracted, so the report you read at the end is one you can act on
 
 ## How it works
 
-A scan is a short pipeline. The scanner introspects the schema, runs a quick check for common
-misconfigurations, hands control to the model, waits for any out-of-band callbacks to arrive,
-removes duplicate findings, and prints a report.
+A scan is a short pipeline. The scanner introspects the schema (recovering it from error-message
+suggestions if introspection is disabled), runs a quick check for common misconfigurations, drafts a
+short attack plan from the full schema, hands control to the model, waits for any out-of-band
+callbacks to arrive, removes duplicate findings, and prints a report.
 
 <img src="docs/pipeline.svg" alt="Diagram of a GradientQL scan: endpoint, introspect, the agent loop (build prompt, model call, pick one action, run and observe, backed by its working memory), reconcile and dedup, report" width="960">
 
@@ -59,11 +60,13 @@ field as dead, open, or exploited. The program also classifies each response on 
 model's verdict takes priority, so the model stays in charge of judgment while a simple default
 fills in when it stays silent.
 
-The model works through a fixed set of actions (`graphql`, `sweep`, `search_schema`, `fuzz`,
-`set_identity`, `temp_mail`, `forge_jwt`, `oob_url`, `dos`, `smuggle`, `csrf`, `auth_test`,
-`batch_brute`, `visit`, `note`, `report_finding`, and `done`) that between them cover
-reconnaissance, authentication (registering an account, reading a confirmation email from a
-disposable mailbox, and logging in), and the individual attack techniques.
+The model works through a fixed set of actions (`graphql`, `sweep`, `search_schema`, `clairvoyance`,
+`fuzz`, `set_identity`, `temp_mail`, `forge_jwt`, `oob_url`, `dos`, `race`, `smuggle`, `csrf`,
+`subscribe`, `defer`, `auth_test`, `batch_brute`, `visit`, `note`, `report_finding`, and `done`) that
+between them cover reconnaissance (including recovering the schema from error suggestions when
+introspection is off), authentication (registering an account, reading a confirmation email from a
+disposable mailbox, and logging in), and the attack techniques: injection, broken authorization, JWT
+forgery, SSRF, request smuggling, denial of service, race conditions, and WebSocket subscriptions.
 
 ## Quickstart
 
@@ -89,8 +92,10 @@ pip install -e ".[dev]"
 You need Python 3.10 or newer and an API key for a model on [OpenRouter](https://openrouter.ai). For
 semantic schema search on large schemas (80+ fields), also install the `semantic` extra
 (`pip install -e ".[dev,semantic]"`), which pulls FAISS, sentence-transformers, and CPU PyTorch;
-without it the scanner falls back to lexical schema search and loses nothing else. The Docker image
-already includes the `semantic` extra.
+without it the scanner falls back to lexical schema search and loses nothing else. The `subscribe`
+action, which probes GraphQL-over-WebSocket subscriptions, needs the `ws` extra
+(`pip install -e ".[dev,ws]"`); without it that one action reports it is unavailable and the rest of
+the scan is unaffected. The Docker image already includes the `semantic` extra.
 
 **Set your key and run** against an endpoint you are authorized to test:
 

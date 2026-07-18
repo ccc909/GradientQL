@@ -71,9 +71,17 @@ The scanner uses the first key it finds, in this order:
   resume with `--resume <run-id>`. `fuzz.max_payloads` caps the per-action battery (default 14),
   `obs_max_chars` bounds how much response body the model sees (default 2000), and `tuning.*`
   (`field_retry_cap`, `dup_fail_cap`, `coverage_nudge_every`) adjusts the anti-stall backstops.
+  `tuning.preflight_plan` (default `true`) makes the agent take one pre-run look at the **whole**
+  schema - compressed to a budgeted SDL-style digest - and draft durable knowledge + a ranked attack
+  plan that seed its memory for the rest of the run (per-turn prompts still show only the lean root
+  map); `tuning.plan_schema_char_budget` (default 60000) caps that one-time digest so a schema whose
+  raw introspection runs to millions of tokens is still sent compactly.
 - **`embeddings`**: `model` (default `all-MiniLM-L6-v2`) and `min_fields` (default 80) control the
   semantic schema index, built only for large schemas and only when the `semantic` install extra
   (`pip install "gradientql[semantic]"`) is present; otherwise schema search is lexical.
+- **`ws` extra**: the `subscribe` action probes GraphQL-over-WebSocket subscriptions and needs the
+  `ws` install extra (`pip install "gradientql[ws]"`). Without it the action reports it is unavailable
+  and the rest of the scan is unaffected.
 
 ## Sessions and authentication
 

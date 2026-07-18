@@ -321,6 +321,165 @@ def render_schema_overview(schema_map: dict[str, Any], sig_cap: int = 24, other_
     return "\n".join(out) if out else "  (no root fields)"
 
 
+def _is_relay_boilerplate(name: str) -> bool:
+    return name.endswith("Connection") or name.endswith("Edge") or name == "PageInfo"
+
+
+def _digest_root_lines(schema_map: dict[str, Any], root: str) -> list[str]:
+    """Full-signature lines for every field of a root type, grouped by attack-surface bucket."""
+    fields = schema_map.get(root)
+    if not isinstance(fields, dict):
+        return []
+    buckets: dict[str, list[str]] = {label: [] for label, _ in _SURFACE_BUCKETS}
+    other: list[str] = []
+    for fname, info in fields.items():
+        if str(fname).startswith("_") or not isinstance(info, dict):
+            continue
+        ret = info.get("return_type", "")
+        args = ", ".join(f"{a.get('name')}: {a.get('type')}" for a in (info.get("args") or []))
+        line = f"{fname}({args}): {ret}" if args else f"{fname}: {ret}"
+        label = _surface_bucket(fname, ret)
+        if label:
+            buckets[label].append(line)
+        else:
+            other.append(line)
+    lines: list[str] = []
+    for label, _ in _SURFACE_BUCKETS:
+        for ln in buckets[label]:
+            lines.append(f"  [{label}] {ln}")
+    for ln in other:
+        lines.append(f"  {ln}")
+    return lines
+
+
+def _type_digest_line(schema_map: dict[str, Any], name: str, cap: int = 28) -> str | None:
+    """One dense line for an object/interface type: `Name {{ field(args):Ret … }}` (no arg types)."""
+    fields = schema_map.get(name)
+    if not isinstance(fields, dict):
+        return None
+    fnames = [f for f in fields if not str(f).startswith("_")]
+    parts: list[str] = []
+    for f in fnames[:cap]:
+        info = fields.get(f) or {}
+        ret = info.get("return_type", "")
+        arglist = info.get("args") or []
+        argstr = "(" + ",".join(str(a.get("name")) for a in arglist) + ")" if arglist else ""
+        parts.append(f"{f}{argstr}:{ret}")
+    more = f" +{len(fnames) - cap}" if len(fnames) > cap else ""
+    kind = "interface " if fields.get("_kind") == "INTERFACE" else ""
+    return f"{kind}{name} {{ {' '.join(parts)}{more} }}"
+
+
+def render_schema_digest(schema_map: dict[str, Any], char_budget: int = 60000) -> str:
+    """One-shot compressed SDL-style digest of the WHOLE schema, for pre-run planning.
+
+    Raw introspection on a big schema can run to well over a million tokens; this collapses it to a
+    budgeted digest. Descriptions are stripped, Relay `*Connection`/`*Edge`/`PageInfo` boilerplate is
+    dropped, and sections are emitted highest-signal first (root Query/Mutation with full signatures →
+    subscriptions → input objects → enums → interfaces/unions → object-type field maps). The small
+    high-value sections come before the bulky object-type field maps, so they always survive; when the
+    running length passes `char_budget` the current section is cut with an explicit
+    "(+N …)" marker and the rest is summarised as counts - nothing is silently dropped.
+    """
+    if not schema_map or field_count(schema_map) == 0:
+        return "(no schema - introspection unavailable or empty)"
+    qroot = schema_map.get("_query_type", "Query")
+    mroot = schema_map.get("_mutation_type", "Mutation")
+    sroot = schema_map.get("_subscription_type") or ""
+    input_types = schema_map.get("_input_types") or {}
+    enum_types = schema_map.get("_enum_types") or {}
+
+    object_types: list[str] = []
+    interface_types: list[str] = []
+    union_types: list[str] = []
+    relay_skipped = 0
+    for name, val in schema_map.items():
+        if str(name).startswith("_") or not isinstance(val, dict):
+            continue
+        if name in (qroot, mroot, sroot):
+            continue
+        kind = val.get("_kind")
+        if kind == "UNION":
+            union_types.append(name)
+        elif kind == "INTERFACE":
+            interface_types.append(name)
+        elif _is_relay_boilerplate(name):
+            relay_skipped += 1
+        else:
+            object_types.append(name)
+
+    # notable object types (name matches an attack-surface bucket) sort first
+    object_types.sort(key=lambda n: (_surface_bucket(n, "") is None, n.lower()))
+
+    n_q = len([f for f in (schema_map.get(qroot) or {}) if not str(f).startswith("_")])
+    n_m = len([f for f in (schema_map.get(mroot) or {}) if not str(f).startswith("_")])
+
+    out: list[str] = []
+    used = [0]
+
+    def add(line: str) -> None:
+        out.append(line)
+        used[0] += len(line) + 1
+
+    def room() -> bool:
+        return used[0] < char_budget
+
+    def section(header: str, lines: list[str], noun: str) -> None:
+        """Emit as many lines as the budget allows; mark the remainder with a count."""
+        if not lines:
+            return
+        if not room():
+            add(f"{header} (+{len(lines)} {noun} omitted - budget; use search_schema/__type)")
+            return
+        add(header)
+        shown = 0
+        for ln in lines:
+            if not room():
+                add(f"  (+{len(lines) - shown} more {noun} - search_schema/__type)")
+                break
+            add(ln)
+            shown += 1
+
+    add(f"SCHEMA DIGEST: {n_q} Query fields, {n_m} Mutation fields, "
+        f"{len(object_types)} object types, {len(input_types)} inputs, {len(enum_types)} enums"
+        + (f", {len(interface_types)} interfaces, {len(union_types)} unions" if (interface_types or union_types) else "")
+        + (f" ({relay_skipped} Relay pagination types collapsed)" if relay_skipped else ""))
+
+    section("QUERY roots [attack-surface tagged]:", _digest_root_lines(schema_map, qroot), "query fields")
+    section("MUTATION roots [attack-surface tagged]:", _digest_root_lines(schema_map, mroot), "mutations")
+    if sroot:
+        subf = [f for f in (schema_map.get(sroot) or {}) if not str(f).startswith("_")]
+        if subf:
+            section("SUBSCRIPTION roots (need a WS/SSE transport):",
+                    ["  " + ", ".join(subf)], "subscriptions")
+    section("INPUT objects (fill these to build mutations; ! = required):",
+            [f"  {n} {{ " + " ".join(f"{lf.get('name')}:{lf.get('type')}" for lf in (input_types[n] or [])[:30])
+             + (f" +{len(input_types[n]) - 30}" if len(input_types[n] or []) > 30 else "") + " }"
+             for n in sorted(input_types)], "input types")
+    section("ENUMS:",
+            [f"  {n}: " + "|".join((enum_types[n] or [])[:16])
+             + (f" +{len(enum_types[n]) - 16}" if len(enum_types[n] or []) > 16 else "")
+             for n in sorted(enum_types)], "enums")
+    if interface_types or union_types:
+        iu: list[str] = []
+        for n in sorted(interface_types):
+            line = _type_digest_line(schema_map, n)
+            if line:
+                iu.append("  " + line)
+        for n in sorted(union_types):
+            poss = (schema_map.get(n) or {}).get("_possible_types") or []
+            iu.append(f"  union {n} = " + " | ".join(poss))
+        section("INTERFACES / UNIONS:", iu, "types")
+    obj_lines: list[str] = []
+    for n in object_types:
+        line = _type_digest_line(schema_map, n)
+        if line:
+            obj_lines.append("  " + line)
+    section("OBJECT TYPES (subfields; args shown by name only):", obj_lines, "object types")
+
+    return "\n".join(out)
+
+
 def _sweepable_query_fields(schema_map: dict[str, Any]) -> list[tuple[str, dict]]:
     qroot = schema_map.get("_query_type", "Query")
     fields = schema_map.get(qroot)
