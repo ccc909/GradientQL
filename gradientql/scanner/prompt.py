@@ -260,6 +260,11 @@ _ACTION_DOCS: dict[str, str] = {
   SUPPORTED it's a DoS-amplification (many `... @defer` fragments -> many chunks), response-desync, and
   DEFERRED-FIELD-AUTHZ surface - a sensitive field behind @defer can leak if auth runs only on the
   initial selection.""",
+    "apq": """- apq: args {query?} - attack Automatic Persisted Queries (run it when misconfig says APQ is
+  enabled). Registers a query by sha256 hash, then: (1) sends a query under a MISMATCHED hash - if the
+  server caches it without verifying the hash, a client asking for that hash runs YOUR query (CACHE
+  POISONING); (2) if plain queries are rejected as persisted-only, registers one via APQ to BYPASS the
+  allow-list. Pass a real query:'{field {...}}' from the recovered schema (some servers reject {__typename}).""",
     "csrf": """- csrf: args {} - PROBE the live endpoint for CSRF (GET-based execution) + CORS reflection,
   reported honestly. A CSRF finding REQUIRES a state-changing op runnable via GET (0 mutations
   = no classic CSRF); a CORS finding REQUIRES arbitrary-Origin reflection WITH credentials. Do
