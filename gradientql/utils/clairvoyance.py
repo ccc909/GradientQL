@@ -207,7 +207,9 @@ def recover_schema(client: Any, extra_headers: dict | None = None,
             return
         schema[type_name] = {
             f: {"args": [{"name": a, "type": "", "default": None} for a in meta["args"]],
-                "return_type": meta["return_type"], "description": "(recovered via clairvoyance)"}
+                # a return type equal to a root type is almost always a mis-parse - drop it to "unknown"
+                "return_type": "" if meta["return_type"] in ("Query", "Mutation", "Subscription")
+                else meta["return_type"], "description": "(recovered via clairvoyance)"}
             for f, meta in found.items()}
         _learn_arg_types(client, op, path, schema[type_name], extra_headers, budget)
         if depth < max_depth:

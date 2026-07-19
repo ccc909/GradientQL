@@ -316,3 +316,45 @@ def test_exploited_glyph_is_bang():
     from gradientql.tui import _GLYPH
     assert _GLYPH["exploited"][0] == "!"
     assert _GLYPH["finding"][0] == "!"
+
+
+# --- pre-validation loop: repeated malformed queries must eventually block ---- #
+
+def _prevalidate_ctx():
+    from gradientql.scanner.actions.context import ActionContext
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"user": {"args": [{"name": "id", "type": "ID", "default": None}],
+                             "return_type": "UserNode", "description": ""}}}  # UserNode NOT in map
+
+    class _C:
+        session = None
+        last_request = None
+
+        def execute(self, *a, **k):
+            return {"data": None, "errors": [], "_status_code": 200}
+
+    return ActionContext(client=_C(), schema_map=sm, schema_index=None, settings={},
+                         target_url="http://t/graphql")
+
+
+def test_prevalidation_blocks_after_repeated_malformed_queries():
+    from gradientql.scanner.actions import dispatch
+    ctx = _prevalidate_ctx()
+    q = {"query": "{ user(id: 1) id }"}          # `id` malformed at Query level
+    r1 = dispatch("graphql", ctx, q)
+    r2 = dispatch("graphql", ctx, q)
+    r3 = dispatch("graphql", ctx, q)
+    assert not r1.blocked and not r2.blocked      # first two just re-explain
+    assert r3.blocked                             # third trips the backstop -> loop will pivot
+    assert "BLOCKED" in r3.observation and "clairvoyance" in r3.observation
+
+
+def test_prevalidation_streak_resets_on_wellformed_query():
+    from gradientql.scanner.actions import dispatch
+    ctx = _prevalidate_ctx()
+    dispatch("graphql", ctx, {"query": "{ user(id: 1) id }"})
+    dispatch("graphql", ctx, {"query": "{ user(id: 1) id }"})
+    # a well-formed query (UserNode subfields aren't validated - type unrecovered) resets the streak
+    dispatch("graphql", ctx, {"query": "{ user(id: 1) { name } }"})
+    r = dispatch("graphql", ctx, {"query": "{ user(id: 1) id }"})
+    assert not r.blocked                          # streak reset, so this is only the 1st again
