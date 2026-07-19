@@ -35,8 +35,8 @@ disproves are retracted, so the report you read at the end is one you can act on
 
 ## How it works
 
-A scan is a short pipeline. The scanner introspects the schema (recovering it from error-message
-suggestions if introspection is disabled), runs a quick check for common misconfigurations, drafts a
+A scan is a short pipeline. The scanner introspects the schema (recovering it from the server's own
+validation errors if introspection is disabled), runs a quick check for common misconfigurations, drafts a
 short attack plan from the full schema, hands control to the model, waits for any out-of-band
 callbacks to arrive, removes duplicate findings, and prints a report.
 
@@ -63,7 +63,7 @@ fills in when it stays silent.
 The model works through a fixed set of actions (`graphql`, `sweep`, `search_schema`, `clairvoyance`,
 `fuzz`, `set_identity`, `temp_mail`, `forge_jwt`, `oob_url`, `dos`, `race`, `smuggle`, `csrf`,
 `subscribe`, `defer`, `auth_test`, `batch_brute`, `visit`, `note`, `report_finding`, and `done`) that
-between them cover reconnaissance (including recovering the schema from error suggestions when
+between them cover reconnaissance (including recovering the schema from validation errors when
 introspection is off), authentication (registering an account, reading a confirmation email from a
 disposable mailbox, and logging in), and the attack techniques: injection, broken authorization, JWT
 forgery, SSRF, request smuggling, denial of service, race conditions, and WebSocket subscriptions.

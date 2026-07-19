@@ -163,9 +163,12 @@ _ACTION_DOCS: dict[str, str] = {
   headers merge over your identity. ALL-OR-NOTHING: if ANY field/selection/arg in the query
   is invalid, the SERVER REJECTS THE WHOLE QUERY and you get ZERO data - so do NOT batch
   guessed subfields. Select { __typename } to confirm a field is reachable, then add real
-  subfields you've verified via search_schema/__type. On a validation error ("Cannot query
-  field X", "argument is required", "Unknown argument"), the field you actually care about was
-  NOT tested - RE-RUN IT ALONE before giving up on it.""",
+  subfields you've verified via search_schema/__type. BUT some servers REJECT `__typename` as
+  introspection ("Introspection is not allowed") - if a probe fails that way, __typename is blocked,
+  so select a REAL subfield instead (from the recovered schema or a nested SubselectionRequired
+  error, which names the type). On a validation error ("Cannot query field X"/"is undefined",
+  "argument is required"/"Missing field argument", "Unknown argument"), the field you actually care
+  about was NOT tested - RE-RUN IT ALONE before giving up on it.""",
     "fuzz": """- fuzz: args {field, arg, classes?: ["ssti","cmdi","sqli","nosql","traversal","ssrf","render","crlf","coercion","enum"],
   payloads?: ["...your OWN payloads..."], path?, input?, selection?} - fire a payload battery at
   ONE field's string target in a single turn (each payload is sent as a variable, so it reaches the
@@ -212,9 +215,11 @@ _ACTION_DOCS: dict[str, str] = {
   surfaces privileged mutations. Lines prefixed "~ ... (semantic)" are fuzzy matches.""",
     "note": """- note: args {text} - append to your notes.""",
     "clairvoyance": """- clairvoyance: args {wordlist?} - when introspection is DISABLED, rebuild the
-  schema from validation-error suggestions: fires common field names and mines "did you mean X, Y"
-  + needs-selection errors to recover valid root fields, merging them into your map. Use it the
-  moment __schema is blocked; pass your own wordlist:[...] to target a domain.""",
+  schema MAP from validation errors: fires candidate field names, drops the ones the server calls
+  undefined, reads each real field's return type (needs-subselection) and required args (missing-
+  argument), and recurses into the object types it finds - then merges fields+types+args into your
+  map. It runs automatically at startup when introspection is blocked; call it again with a DOMAIN
+  wordlist:[...] (product-specific field guesses) to recover more of the surface.""",
     "forge_jwt": """- forge_jwt: args {approach, secret?, claims?} - mint a forged JWT, tampering a
   harvested token's claims. approach is one of:
     none         - alg:none (unsigned)

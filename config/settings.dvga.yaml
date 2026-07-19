@@ -27,6 +27,8 @@ scanner:
     # One pre-run look at the whole schema (compressed) to draft knowledge + an attack plan.
     preflight_plan: true
     plan_schema_char_budget: 60000
+    # When introspection is blocked, recover the schema from validation errors before the run.
+    auto_clairvoyance: true
 
 embeddings:
   model: "all-MiniLM-L6-v2"

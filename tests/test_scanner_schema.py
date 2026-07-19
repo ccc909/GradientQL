@@ -197,3 +197,27 @@ def test_tool_sweep_nothing_to_sweep():
     q, summary, results, resp = schema.tool_sweep(MockClient(), sm, exclude=set())
     assert q is None
     assert "EXHAUSTED" in summary
+
+
+# --- introspection_shortcut is honest about a recovered (partial) schema ----- #
+
+def test_introspection_shortcut_full_schema_message():
+    sm = {"_query_type": "Query", "Query": {"me": {"args": [], "return_type": "User", "description": ""}},
+          "User": {"id": {"args": [], "return_type": "ID", "description": ""}}}
+    msg = schema.introspection_shortcut("query { __schema { types { name } } }", sm)
+    assert msg and "ALREADY hold the full introspected schema" in msg
+
+
+def test_introspection_shortcut_recovered_schema_message():
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"account": {"args": [], "return_type": "Account",
+                                "description": "(recovered via clairvoyance)"}}}
+    msg = schema.introspection_shortcut("query { __schema { types { name } } }", sm)
+    assert msg and "INTROSPECTION IS DISABLED" in msg and "clairvoyance" in msg
+    assert "ALREADY hold the full" not in msg
+
+
+def test_introspection_shortcut_empty_schema_is_recovered_style():
+    msg = schema.introspection_shortcut("query { __schema { types { name } } }",
+                                        {"_query_type": "Query", "Query": {}})
+    assert msg and "DISABLED" in msg
