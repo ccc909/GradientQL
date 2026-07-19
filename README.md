@@ -40,8 +40,6 @@ validation errors if introspection is disabled), runs a quick check for common m
 short attack plan from the full schema, hands control to the model, waits for any out-of-band
 callbacks to arrive, removes duplicate findings, and prints a report.
 
-<img src="docs/pipeline.svg" alt="Diagram of a GradientQL scan: endpoint, introspect, the agent loop (build prompt, model call, pick one action, run and observe, backed by its working memory), reconcile and dedup, report" width="960">
-
 The middle step is where the work happens. The model drives: on each turn it is given a compressed
 view of the situation (the schema, a summary of what it has already tried, the facts it has
 recorded, and any credentials or tokens it has harvested) and replies with one JSON action. A run is
