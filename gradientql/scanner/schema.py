@@ -693,6 +693,17 @@ def render_type_shape(schema_map: dict[str, Any], name: str) -> str | None:
 _RE_INTROSPECT_TYPE = re.compile(r'__type\s*\(\s*name\s*:\s*"([^"]+)"')
 
 
+def _schema_recovered(schema_map: dict[str, Any]) -> bool:
+    """True if the root fields carry the clairvoyance marker (introspection was blocked)."""
+    for rk in ("_query_type", "_mutation_type"):
+        fields = schema_map.get(schema_map.get(rk, ""))
+        if isinstance(fields, dict):
+            for info in fields.values():
+                if isinstance(info, dict) and "clairvoyance" in str(info.get("description", "")):
+                    return True
+    return False
+
+
 def introspection_shortcut(query: str, schema_map: dict[str, Any]) -> str | None:
     """Answer an introspection query from the cached schema without sending a request.
 
@@ -702,12 +713,24 @@ def introspection_shortcut(query: str, schema_map: dict[str, Any]) -> str | None
     """
     if not is_introspection_query(query):
         return None
+    recovered = _schema_recovered(schema_map) or field_count(schema_map) == 0
     names = _RE_INTROSPECT_TYPE.findall(query)
     if names:
-        lines = [render_type_shape(schema_map, n) or f"{n}: not a known composite type (scalar/enum/typo?)"
+        lines = [render_type_shape(schema_map, n) or f"{n}: not a known type yet (typo, or not recovered)"
                  for n in dict.fromkeys(names)]
-        return ("served from the already-introspected schema (NO request sent - __type queries return the "
-                "whole schema dump on many servers, so use this):\n  " + "\n  ".join(lines))
+        head = ("served from the RECOVERED schema map (NO request sent). This map is PARTIAL (recovered "
+                "from validation errors, not introspected) - a type may have more fields than shown; "
+                "clairvoyance with a domain wordlist recovers more:\n  " if recovered else
+                "served from the already-introspected schema (NO request sent - __type queries return the "
+                "whole schema dump on many servers, so use this):\n  ")
+        return head + "\n  ".join(lines)
+    if recovered:
+        return ("INTROSPECTION IS DISABLED on this target - that is why your schema is PARTIAL (it was "
+                "RECOVERED from validation errors, not introspected). Re-sending __schema/__type returns "
+                "nothing more (obfuscated and GET introspection were already tried at startup). To map MORE "
+                "of the surface, run `clairvoyance` with a DOMAIN-specific wordlist:[...] (product-specific "
+                "field-name guesses). NOTE: this server also rejects `{ __typename }` as introspection - if a "
+                "probe fails with 'Introspection is not allowed', select a REAL recovered subfield instead.")
     return ("you ALREADY hold the full introspected schema - do NOT re-introspect with __schema/__type "
             "(it returns the entire multi-thousand-field schema and tells you nothing new). Use "
             "`search_schema <keyword>` to find fields/types/inputs, or query a concrete field.")

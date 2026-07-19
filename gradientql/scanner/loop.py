@@ -65,6 +65,17 @@ _PLAN_CHAR_BUDGET = 60000  # cap on the one-time full-schema digest fed to the p
 _SLEEP_SLICE = 0.25
 
 
+def _schema_is_recovered(schema_map: dict[str, Any]) -> bool:
+    """True if the root fields carry the clairvoyance marker (introspection was blocked)."""
+    for root_key in ("_query_type", "_mutation_type"):
+        fields = schema_map.get(schema_map.get(root_key, ""))
+        if isinstance(fields, dict):
+            for info in fields.values():
+                if isinstance(info, dict) and "clairvoyance" in str(info.get("description", "")):
+                    return True
+    return False
+
+
 def _sleep_or_stop(seconds: float, should_stop: Any) -> None:
     """Sleep for ~`seconds` in fixed 0.25s slices, returning early on a stop request.
 
@@ -227,14 +238,21 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         logger.info("AGENT: resumed run %s at step %d with %d prior finding(s)",
                     run_id or "?", start_step, len(ctx.vulns))
     else:
+        recovered = _schema_is_recovered(schema_map)
         if field_count(schema_map) == 0:
             ctx.facts.append(
-                "INTROSPECTION IS DISABLED/blocked - you have NO field map yet (obfuscated __schema and "
-                "GET were already tried). FIRST run `clairvoyance` to recover root fields from the server's "
-                "'did you mean' validation-error suggestions, then query the recovered fields directly to "
-                "confirm and drill them. Endpoint-level issues (GraphQL IDE, exposed SDL file, Hasura "
-                "run_sql, CSRF/CORS) are already probed automatically.")
+                "INTROSPECTION IS DISABLED and startup clairvoyance recovered NO fields (obfuscated "
+                "__schema and GET were already tried too). Retry `clairvoyance` with a DOMAIN-SPECIFIC "
+                "wordlist ({\"wordlist\":[...guesses for this product...]}) - it recovers fields from the "
+                "server's own validation errors. Endpoint-level issues (GraphQL IDE, exposed SDL file, "
+                "Hasura run_sql, CSRF/CORS) are already probed automatically.")
         else:
+            if recovered:
+                ctx.facts.append(
+                    "This schema was RECOVERED from validation errors (introspection was blocked), so it is "
+                    "PARTIAL - fields, return types, and args may be missing or approximate. Confirm a field "
+                    "with graphql before trusting it, and re-run `clairvoyance` (optionally with a domain "
+                    "wordlist) to recover more of the surface.")
             _am = auth_mutations(schema_map)
             if _am:
                 ctx.facts.append("Token-minting mutations exist (" + ", ".join(_am[:6])

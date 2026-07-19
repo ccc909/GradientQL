@@ -115,7 +115,10 @@ def test_introspection_shortcut_serves_input_type():
 
 
 def test_introspection_shortcut_bare_schema_redirects_to_search():
-    out = schema.introspection_shortcut("query { __schema { types { name } } }", {})
+    # a real (introspected) schema -> redirect to search_schema; an empty/recovered schema instead
+    # points at clairvoyance (covered in test_scanner_schema.py)
+    sm = {"_query_type": "Query", "Query": {"me": {"args": [], "return_type": "User", "description": ""}}}
+    out = schema.introspection_shortcut("query { __schema { types { name } } }", sm)
     assert out is not None and "search_schema" in out
 
 

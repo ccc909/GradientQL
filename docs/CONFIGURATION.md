@@ -75,7 +75,10 @@ The scanner uses the first key it finds, in this order:
   schema - compressed to a budgeted SDL-style digest - and draft durable knowledge + a ranked attack
   plan that seed its memory for the rest of the run (per-turn prompts still show only the lean root
   map); `tuning.plan_schema_char_budget` (default 60000) caps that one-time digest so a schema whose
-  raw introspection runs to millions of tokens is still sent compactly.
+  raw introspection runs to millions of tokens is still sent compactly. `tuning.auto_clairvoyance`
+  (default `true`) recovers the schema from the server's own validation errors before the run when
+  introspection is disabled - reading each field's return type and required args and recursing into
+  the types it finds - so the agent starts with a real map instead of guessing field names.
 - **`embeddings`**: `model` (default `all-MiniLM-L6-v2`) and `min_fields` (default 80) control the
   semantic schema index, built only for large schemas and only when the `semantic` install extra
   (`pip install "gradientql[semantic]"`) is present; otherwise schema search is lexical.

@@ -82,10 +82,20 @@ def run_scan(settings: dict[str, Any], target_url: str, progress_cb: Any = None,
             # oracle) and query-name probing. Start from empty roots.
             errs = raw.get("errors")
             detail = str(errs[0].get("message", ""))[:160] if isinstance(errs, list) and errs and isinstance(errs[0], dict) else ""
-            logger.warning("AGENT MODE: introspection blocked (%s) - proceeding schema-less; the agent "
-                           "will recover the surface via clairvoyance / obfuscated introspection.", detail or errs)
+            logger.warning("AGENT MODE: introspection blocked (%s) - recovering the schema from "
+                           "validation errors (clairvoyance).", detail or errs)
             schema_map = {"_query_type": "Query", "_mutation_type": "Mutation",
                           "_subscription_type": "", "Query": {}, "Mutation": {}}
+            if settings.get("scanner", {}).get("tuning", {}).get("auto_clairvoyance", True):
+                try:
+                    from ..utils.clairvoyance import merge_into_schema, recover_schema
+                    added = merge_into_schema(schema_map, recover_schema(client))
+                    logger.info("AGENT MODE: clairvoyance recovered %d field(s) across %d type(s) "
+                                "before handing control to the model.", added,
+                                len([k for k in schema_map if not k.startswith("_") and schema_map[k]]))
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("AGENT MODE: startup clairvoyance failed (%s) - the agent can retry "
+                                   "the clairvoyance action during the run.", e)
 
     vulns: list[dict[str, Any]] = []
     try:
