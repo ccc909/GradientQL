@@ -282,6 +282,7 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
     if ctx.oob_sess is not None and getattr(ctx.oob_sess, "domain", None) and (
             ctx.oob_sess.domain in query or ctx.oob_sess.domain in json.dumps(variables, default=str)):
         ctx.oob_injected_at = ctx.step
+        ctx.oob_injected_req = dict(getattr(ctx.client, "last_request", None) or {})
 
     if not led.get("finding") and not led.get("fuzzed"):
         refl = find_reflections(query, variables, data)

@@ -36,9 +36,9 @@ disproves are retracted, so the report you read at the end is one you can act on
 ## How it works
 
 A scan is a short pipeline. The scanner introspects the schema (recovering it from the server's own
-validation errors if introspection is disabled), runs a quick check for common misconfigurations, drafts a
-short attack plan from the full schema, hands control to the model, waits for any out-of-band
-callbacks to arrive, removes duplicate findings, and prints a report.
+validation errors if introspection is disabled), fingerprints the server engine, runs a quick check
+for common misconfigurations, drafts a short attack plan from the full schema, hands control to the
+model, waits for any out-of-band callbacks to arrive, removes duplicate findings, and prints a report.
 
 The middle step is where the work happens. The model drives: on each turn it is given a compressed
 view of the situation (the schema, a summary of what it has already tried, the facts it has

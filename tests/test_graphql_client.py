@@ -85,3 +85,39 @@ def test_introspect_all_blocked_returns_failure(monkeypatch):
     monkeypatch.setattr(c.session, "get", _boom)
     r = c.introspect()
     assert r.get("errors") and not r.get("data")  # honest failure, still non-fatal upstream
+
+
+def test_finding_curl_includes_session_cookies():
+    from gradientql.tui import _finding_curl
+    f = {"request": {"url": "https://t/graphql", "payload": {"query": "{me{id}}"},
+                     "headers": {"Content-Type": "application/json", "Cookie": "stale=1"},
+                     "cookies": {"sid": "abc", "csrf": "tok"}}}
+    curl = _finding_curl(f)
+    assert "-b " in curl and "sid=abc" in curl and "csrf=tok" in curl
+    assert "Cookie: stale=1" not in curl   # raw Cookie header dropped; cookies emitted via -b
+
+
+def test_finding_curl_no_cookies_no_b_flag():
+    from gradientql.tui import _finding_curl
+    curl = _finding_curl({"request": {"url": "https://t/graphql", "payload": {"query": "{x}"},
+                                      "headers": {"Content-Type": "application/json"}}})
+    assert "-b " not in curl
+
+
+def test_execute_captures_session_cookies(monkeypatch):
+    c = GraphQLClient(URL)
+    c._session_initialized = True                      # skip the csrf/session warm-up network call
+    c.session.cookies.set("sid", "abc")
+
+    class _R:
+        status_code = 200
+        text = '{"data":{"__typename":"Query"}}'
+        headers = {"Content-Type": "application/json"}
+
+        def json(self):
+            return {"data": {"__typename": "Query"}}
+
+    monkeypatch.setattr(c.session, "post", lambda *a, **k: _R())
+    monkeypatch.setattr(c.session, "get", lambda *a, **k: _R())
+    c.execute("{ __typename }")
+    assert c.last_request["cookies"].get("sid") == "abc"

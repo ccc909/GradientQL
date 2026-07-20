@@ -186,3 +186,31 @@ def test_learn_arg_types_fills_type_from_wrongtype():
     _learn_arg_types(_C(), "query", [], fields, None, budget)
     assert fields["videos"]["args"][0]["type"] == "[Int]"
     assert budget[0] == 4  # consumed one probe request
+
+
+def test_analyze_guards_against_non_exhaustive_errors():
+    # a server that reports only ONE "Cannot query field" for a big batch (error cap / WAF) must NOT
+    # make clairvoyance mark the other 39 as valid - that produced the 1337 junk fields on riverside.
+    chunk = [f"w{i}" for i in range(40)]
+    resp = {"errors": [{"message": 'Cannot query field "w0" on type "Query".'}], "data": None}
+    out = _analyze(resp, chunk)
+    assert out == {}                       # no positive signals -> nothing recovered (not 39 junk)
+
+
+def test_analyze_guard_keeps_positively_signalled_fields():
+    # even on a capped server, a field the server explicitly typed (SubselectionRequired) is kept
+    chunk = [f"w{i}" for i in range(40)] + ["user"]
+    resp = {"errors": [
+        {"message": 'Cannot query field "w0" on type "Query".'},
+        {"message": "Validation error (SubselectionRequired@[user]) : Subselection required for type 'User'"},
+    ], "data": None}
+    out = _analyze(resp, chunk)
+    assert set(out) == {"user"} and out["user"]["return_type"] == "User"
+
+
+def test_analyze_exhaustive_server_still_recovers_scalars():
+    # a normal exhaustive server flags most of the chunk undefined -> guard OFF, scalars recovered
+    chunk = [f"w{i}" for i in range(40)]
+    errs = [{"message": f'Cannot query field "w{i}" on type "Query".'} for i in range(2, 40)]
+    out = _analyze({"errors": errs, "data": None}, chunk)
+    assert set(out) == {"w0", "w1"}        # the 2 not flagged are the real scalars

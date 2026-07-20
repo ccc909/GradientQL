@@ -422,3 +422,36 @@ def test_fuzz_render_and_crlf_registered_classes():
     from gradientql.scanner.payloads import CLASS_PROBES
     assert "render" in CLASS_PROBES and "crlf" in CLASS_PROBES
     assert any("file:///etc/passwd" in p for p in CLASS_PROBES["render"])
+
+
+class _ReqClient:
+    """A client that records last_request like the real one, so fuzz can store it for curl."""
+    def __init__(self):
+        self.session = None
+        self.last_request = None
+
+    def execute(self, query, variables=None, extra_headers=None):
+        self.last_request = {"url": "http://t/graphql",
+                             "payload": {"query": query, "variables": variables},
+                             "headers": {}, "cookies": {}}
+        return {"data": {"echo": "x"}, "errors": [], "_status_code": 200}
+
+
+def test_fuzz_stores_request_on_ledger_for_report_finding():
+    ctx = _ctx(_ReqClient(), _schema())
+    dispatch("fuzz", ctx, {"field": "echo", "arg": "text", "classes": ["sqli"]})
+    req = (ctx.ledger.get("echo") or {}).get("req") or {}
+    assert "echo" in (req.get("payload") or {}).get("query", "")   # not the empty fallback
+
+
+def test_fuzz_ssrf_captures_oob_injecting_request():
+    class _OOB:
+        domain = "oob.example"
+
+        def issue(self, meta):
+            return ("http://oob.example/abc", "lbl")
+
+    ctx = _ctx(_ReqClient(), _schema())
+    ctx.oob_sess = _OOB()
+    dispatch("fuzz", ctx, {"field": "echo", "arg": "text", "classes": ["ssrf"]})
+    assert ctx.oob_injected_req and ctx.oob_injected_req.get("payload", {}).get("query")

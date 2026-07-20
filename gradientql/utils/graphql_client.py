@@ -407,8 +407,11 @@ class GraphQLClient:
                 payload["variables"] = variables
 
         self._log_curl(payload)
+        # capture the session cookie jar too (CSRF/auth cookies live there, not in headers) so a
+        # finding's copy-curl reproduces authenticated - without them the curl runs as anonymous.
         self.last_request = {"url": self.url, "payload": payload,
-                             "headers": {**dict(self.session.headers), **(extra_headers or {})}}
+                             "headers": {**dict(self.session.headers), **(extra_headers or {})},
+                             "cookies": {k: v for k, v in self.session.cookies.items()}}
 
         start_time = time.time()
         try:
