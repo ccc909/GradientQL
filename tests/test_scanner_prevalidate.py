@@ -117,3 +117,27 @@ def test_prevalidate_allows_batched_query_fields():
     assert prevalidate_query("query { a: me { id } b: me { id } }", {}, sm) is None
 
 prevalidate_query = prevalidate.prevalidate_query
+
+
+def test_recovered_schema_skips_field_validation():
+    # a clairvoyance-recovered schema can carry a wrong return_type (here user -> "Query"); pre-validation
+    # must NOT reject a valid subfield query against it - the server validates. Only structural checks apply.
+    from gradientql.scanner.prevalidate import prevalidate_query
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"user": {"args": [{"name": "id", "type": "ID", "default": None}],
+                             "return_type": "Query",  # bogus circular type from recovery
+                             "description": "(recovered via clairvoyance)"}}}
+    assert prevalidate_query("query { user(id: 1) { id email name } }", {}, sm) is None
+    # structural checks still fire even on a recovered schema
+    multi = prevalidate_query("query { user(id:1){id} } query B { user(id:2){id} }", {}, sm)
+    assert multi is not None and "operation" in multi.lower()
+
+
+def test_real_schema_still_validates_fields():
+    # a genuinely-introspected schema (no clairvoyance marker) still rejects unknown fields
+    from gradientql.scanner.prevalidate import prevalidate_query
+    sm = {"_query_type": "Query", "_mutation_type": "Mutation",
+          "Query": {"user": {"args": [], "return_type": "User", "description": ""}},
+          "User": {"id": {"args": [], "return_type": "ID", "description": ""}}}
+    out = prevalidate_query("query { user { bogusField } }", {}, sm)
+    assert out is not None and "bogusField" in out

@@ -43,6 +43,15 @@ and YOUR id (it gets harvested below). (2) Note the magnitude (e.g. ids like 152
 the SAME field with NEARBY ids (yourId-1, +1, ±5, ±50) while authenticated - if it returns an
 object that ISN'T yours (different email/name), that is CONFIRMED BOLA. Also compare anon-vs-
 authed, and register a SECOND account and try to read the first account's objects.
+NOT BOLA - do NOT report these: reading PUBLIC content anonymously (CMS pages, articles, catalogs,
+product listings, help/procedure docs - anything with no owner and no PII, e.g. a page titled "Home"
+or "Inscríbete en el RFC"). BOLA needs ANOTHER USER's PRIVATE, owned object (their email, address,
+order, token). If the returned object has no user/owner and no personal data, it's public by design.
+The INVERTED pattern (anonymous gets DATA but an AUTHENTICATED token gets "Forbidden") is NOT BOLA -
+it's a public-content permission quirk (common in Strapi/CMS: the Public role can read a content type
+the Authenticated role wasn't granted). Only report broken access control when a specific user's
+PRIVATE object is read by someone who shouldn't - prove it with a different owner's data, not just
+"data came back without auth".
 
 INJECTION / SSRF / SSTI - a field that takes a string / url / template / code / search / path arg is
 worth fuzzing. If a field RENDERS or interpolates your input (a template/preview/format/message that
@@ -193,7 +202,10 @@ _ACTION_DOCS: dict[str, str] = {
     "auth_test": """- auth_test: args {query, variables?} - run ONE field/mutation under anonymous / your current token /
   a forged-admin token (+ any 2nd harvested token) as ISOLATED requests and DIFF the outcomes. THE way
   to test auth-sensitive fields (token-mint, password-reset, account-destruct, order/payment mutations):
-  a sensitive field that returns DATA unauthenticated or for the WRONG user is broken access control.
+  a sensitive field that returns ANOTHER USER's PRIVATE data unauthenticated is broken access control.
+  anon:DATA is only a finding if that data is PRIVATE/owned (PII, someone's order/token) - anon reading
+  PUBLIC content (CMS pages, catalogs) is by design. anon:DATA while current:AUTH-BLOCKED (inverted) is
+  NOT BOLA, it's a public-content permission quirk - do not report it.
   e.g. {"query":"mutation { generateCustomerTokenAsAdmin(input:{customer_email:\\"victim@x.io\\"}) { customer_token } }"}.""",
     "set_identity": """- set_identity: args {headers} - adopt auth headers (e.g. a captured token) for ALL
   future graphql calls. This is how you "log in".""",
@@ -260,6 +272,11 @@ _ACTION_DOCS: dict[str, str] = {
   SUPPORTED it's a DoS-amplification (many `... @defer` fragments -> many chunks), response-desync, and
   DEFERRED-FIELD-AUTHZ surface - a sensitive field behind @defer can leak if auth runs only on the
   initial selection.""",
+    "apq": """- apq: args {query?} - attack Automatic Persisted Queries (run it when misconfig says APQ is
+  enabled). Registers a query by sha256 hash, then: (1) sends a query under a MISMATCHED hash - if the
+  server caches it without verifying the hash, a client asking for that hash runs YOUR query (CACHE
+  POISONING); (2) if plain queries are rejected as persisted-only, registers one via APQ to BYPASS the
+  allow-list. Pass a real query:'{field {...}}' from the recovered schema (some servers reject {__typename}).""",
     "csrf": """- csrf: args {} - PROBE the live endpoint for CSRF (GET-based execution) + CORS reflection,
   reported honestly. A CSRF finding REQUIRES a state-changing op runnable via GET (0 mutations
   = no classic CSRF); a CORS finding REQUIRES arbitrary-Origin reflection WITH credentials. Do

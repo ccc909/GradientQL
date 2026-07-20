@@ -6,7 +6,7 @@ import difflib
 import re
 from typing import Any
 
-from .schema import _fmt_field
+from .schema import _fmt_field, _schema_recovered
 
 _MAX_DEPTH = 8
 
@@ -77,6 +77,13 @@ def prevalidate_query(query: str, variables: dict[str, Any], schema_map: dict[st
         return None
     root_fields = schema_map.get(root_type)
     if not _is_object_type(root_fields):
+        return None
+
+    # A clairvoyance-recovered schema is PARTIAL and its return types can be wrong (a field the
+    # crawler couldn't resolve may point at the root type), so field/subselection checks here would
+    # FALSELY reject valid queries. The multi-operation / batched-mutation checks above still apply;
+    # for everything else, trust the server's own validation.
+    if _schema_recovered(schema_map):
         return None
 
     errors: list[str] = []

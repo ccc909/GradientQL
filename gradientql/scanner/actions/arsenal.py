@@ -460,3 +460,29 @@ def handle_defer(ctx: ActionContext, args: dict) -> Result:
                f"returned a normal response, not multipart/incremental. {r.get('detail', '')[:120]}")
     ctx.log(f"[{ctx.step}] defer -> {obs[:160]}")
     return Result(observation=obs, touched_target=True)
+
+
+@action("apq")
+def handle_apq(ctx: ActionContext, args: dict) -> Result:
+    """Test Automatic Persisted Queries: registration, hash-mismatch cache poisoning, allow-list bypass.
+
+    args {query?} - a real query to register/poison with (default {__typename}, which some servers reject
+    as introspection - pass a recovered field query instead there).
+    """
+    from ...utils.apq import probe_apq
+    query = str(args.get("query", "")).strip() or "{__typename}"
+    try:
+        result = probe_apq(ctx.target_url, query=query, session=getattr(ctx.client, "session", None),
+                           headers=dict(ctx.identity or {}))
+    except Exception as e:  # noqa: BLE001
+        obs = f"apq probe failed: {str(e)[:120]}"
+        ctx.log(f"[{ctx.step}] apq -> {obs}")
+        return Result(observation=obs, touched_target=True)
+    for vt, evidence in result.get("findings", []):
+        ctx.record(vt, "endpoint", evidence, 3.0)
+    ctx.interactions.append({"target_node": "apq", "reason": "agent_apq", "response_status": 0,
+                             "score": 0.0, "timestamp": datetime.now(timezone.utc).isoformat()})
+    head = ("⚠ " + "; ".join(vt for vt, _ in result["findings"]) + "\n  ") if result.get("findings") else ""
+    obs = head + " | ".join(result.get("observations", []))
+    ctx.log(f"[{ctx.step}] apq -> {obs[:200]}")
+    return Result(observation=obs[:700], touched_target=True)

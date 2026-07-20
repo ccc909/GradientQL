@@ -63,6 +63,7 @@ class ActionContext:
     _retracted_sigs: set[str] = field(default_factory=set)
     _fid: int = 0
     _fuzz_seen: dict = field(default_factory=dict)
+    _prevalidate_fails: dict[str, int] = field(default_factory=dict)
     _stream: Callable[[dict[str, Any]], None] | None = None
     _stream_retract: Callable[[str, str], None] | None = None
 

@@ -60,11 +60,12 @@ fills in when it stays silent.
 
 The model works through a fixed set of actions (`graphql`, `sweep`, `search_schema`, `clairvoyance`,
 `fuzz`, `set_identity`, `temp_mail`, `forge_jwt`, `oob_url`, `dos`, `race`, `smuggle`, `csrf`,
-`subscribe`, `defer`, `auth_test`, `batch_brute`, `visit`, `note`, `report_finding`, and `done`) that
-between them cover reconnaissance (including recovering the schema from validation errors when
+`subscribe`, `defer`, `apq`, `auth_test`, `batch_brute`, `visit`, `note`, `report_finding`, and `done`)
+that between them cover reconnaissance (including recovering the schema from validation errors when
 introspection is off), authentication (registering an account, reading a confirmation email from a
 disposable mailbox, and logging in), and the attack techniques: injection, broken authorization, JWT
-forgery, SSRF, request smuggling, denial of service, race conditions, and WebSocket subscriptions.
+forgery, SSRF, request smuggling, denial of service, race conditions, persisted-query poisoning, and
+WebSocket subscriptions.
 
 ## Quickstart
 

@@ -65,6 +65,21 @@ def detect_frameworks(schema_map: dict[str, Any]) -> list[str]:
             "status filters can leak DRAFT/PRIVATE/scheduled content unauthenticated; and state-changing "
             "mutations are often CSRF-able. Enumerate users first, then probe private content and BOLA.")
 
+    # --- Strapi (users-permissions plugin + EntityResponse content-type envelope) ---
+    strapi = (any("userspermissions" in str(t).lower() for t in all_types)
+              or any(str(t).endswith(("EntityResponse", "EntityResponseCollection", "RelationResponseCollection"))
+                     for t in all_types)
+              or "usersPermissionsUser" in q or "UsersPermissionsRegisterInput" in (schema_map.get("_input_types") or {}))
+    if strapi:
+        facts.append(
+            "STRAPI CMS detected (users-permissions plugin / EntityResponse envelope). WARNING: content "
+            "types (pages, articles, catalogs, procedures) are PUBLIC by default - reading them "
+            "anonymously is NOT BOLA, and anon:DATA while an authenticated token is Forbidden is a Public-"
+            "vs-Authenticated ROLE quirk, not a vuln. The REAL bugs here are in the users-permissions plugin: "
+            "register MASS ASSIGNMENT (send role/confirmed/blocked in the register input), changePassword / "
+            "resetPassword flaws, and the login NoSQL-injection CVE (CVE-2023-22894) via the identifier field. "
+            "Focus there; do not report public content reads.")
+
     # --- PostGraphile ---
     if any(str(f).startswith("all") and str(f).endswith("s") for f in qnames) and "nodeId" in str(
             [i.get("name") for fx in q.values() if isinstance(fx, dict) for i in (fx.get("args") or [])]):

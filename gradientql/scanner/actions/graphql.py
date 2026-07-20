@@ -58,6 +58,7 @@ def _obs_data(full: str, obs_max: int = _OBS_DATA_CHARS) -> str:
 
 FIELD_RETRY_CAP = 8
 DUP_FAIL_CAP = 2
+PREVALIDATE_CAP = 3  # repeated pre-validation rejections of one field before the loop is forced to pivot
 
 _VOLATILE_SIG = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -167,9 +168,21 @@ def handle_graphql(ctx: ActionContext, args: dict) -> Result:
         return Result(observation=served)
 
     synthetic = prevalidate_query(query, variables, ctx.schema_map)
+    pf0 = primary_root_field(query) or "?"
     if synthetic is not None:
-        ctx.log(f"[{ctx.step}] graphql PRE-VALIDATED (no request) -> {synthetic}")
+        n = ctx._prevalidate_fails.get(pf0, 0) + 1
+        ctx._prevalidate_fails[pf0] = n
+        ctx.log(f"[{ctx.step}] graphql PRE-VALIDATED (no request, x{n}) -> {synthetic}")
+        if n >= PREVALIDATE_CAP:
+            # repeated malformed variants of the same field: don't let the agent loop forever (this
+            # path never touched the request/dup backstops). Escalate and block so the loop pivots.
+            return Result(observation=(
+                synthetic + f"\n  ⚠ BLOCKED: {n} malformed variants of '{pf0}' in a row - STOP re-sending. "
+                f"If '{pf0}'s return type has no known subfields (introspection off), run `clairvoyance` to "
+                f"recover them, or send ONE well-formed `{pf0}(<args>) {{ <one guessed subfield> }}` and let "
+                f"the SERVER's error name the type's real fields. Then move to a DIFFERENT field."), blocked=True)
         return Result(observation=synthetic)
+    ctx._prevalidate_fails.pop(pf0, None)  # a well-formed query resets the pre-validation streak
 
     scanner = ctx.settings.get("scanner", {})
     tuning = scanner.get("tuning", {})

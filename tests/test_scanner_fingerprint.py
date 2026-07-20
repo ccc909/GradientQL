@@ -44,3 +44,16 @@ def test_plain_schema_no_false_positive():
 
 def test_empty_schema():
     assert detect_frameworks({}) == []
+
+
+def test_detects_strapi():
+    sm = _base(query={"usersPermissionsUser": {}, "process": {}},
+               extra={"ProcessEntityResponse": {}, "UsersPermissionsUser": {}})
+    facts = detect_frameworks(sm)
+    assert any("STRAPI" in f for f in facts)
+    assert any("NOT BOLA" in f and "mass assignment" in f.lower() for f in facts)
+
+
+def test_strapi_via_register_input():
+    sm = _base(query={"me": {}}, extra={"_input_types": {"UsersPermissionsRegisterInput": []}})
+    assert any("STRAPI" in f for f in detect_frameworks(sm))
