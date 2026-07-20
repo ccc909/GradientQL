@@ -37,3 +37,7 @@ config/api_key.local
 Thumbs.db
 scripts/generate_comparison_chart.py
 scripts/generate_improvement_chart.py
+
+# Removed from repo but kept locally
+docs/pipeline.svg
+bash.exe.stackdump

@@ -256,12 +256,17 @@ def handle_fuzz(ctx: ActionContext, args: dict) -> Result:
 
     for vt, payload, reason in confirmed:
         ctx.record(vt, label, f"payload={payload!r}; {reason}", 3.0)
+    last_req = dict(getattr(ctx.client, "last_request", None) or {})
     if has_oob and ctx.oob_sess is not None:
         ctx.oob_injected_at = ctx.step
+        # remember the request that carried the OOB URL, so a blind-SSRF hit confirmed steps later
+        # (auto-check or report_finding) reconstructs a real curl instead of an empty one.
+        ctx.oob_injected_req = last_req
 
     idlabel = identity_label(ctx.identity)
     e = ctx.ledger.setdefault(field, blank_entry(field, idlabel, ctx.step))
     e["fuzzed"] = True
+    e["req"] = last_req  # so report_finding on this fuzzed field has a request to curl
     if confirmed:
         e["finding"] = confirmed[0][0]
     else:

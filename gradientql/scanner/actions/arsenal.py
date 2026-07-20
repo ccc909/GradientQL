@@ -225,7 +225,8 @@ def handle_oob_url(ctx: ActionContext, args: dict) -> Result:
                 ix = h.get("interaction", {})
                 proto = ix.get("protocol", "?")
                 ctx.record(f"Blind SSRF / OOB interaction ({proto}) confirmed", "endpoint",
-                           f"OOB {proto} callback from {ix.get('remote-address', '?')}", 3.0)
+                           f"OOB {proto} callback from {ix.get('remote-address', '?')}", 3.0,
+                           req=ctx.oob_injected_req)
             protos = ", ".join(sorted({h.get("interaction", {}).get("protocol", "?") for h in hits}))
             obs = f"⚠ {len(hits)} OOB CALLBACK(S) RECEIVED - blind SSRF/XXE CONFIRMED (protocols: {protos})"
         else:

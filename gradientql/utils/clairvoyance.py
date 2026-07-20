@@ -117,10 +117,19 @@ def _analyze(resp: dict, chunk: list[str]) -> dict[str, dict]:
             continue
 
     resolved = {k for k in (data or {}) if k in chunk} if isinstance(data, dict) else set()
-    if not (undefined or obj_type or needs_arg or resolved or suggestions):
+    chunk_set = set(chunk)
+    positive = set(obj_type) | set(needs_arg) | resolved | (suggestions & chunk_set)
+    if not (undefined or positive):
         return {}
 
-    valid = (set(chunk) - undefined) | set(obj_type) | set(needs_arg) | resolved | (suggestions & set(chunk))
+    valid = (chunk_set - undefined) | positive
+    # Guard against NON-exhaustive error reporting (an error cap, a persisted-query gate, or a WAF
+    # that returns one generic error). On a broad wordlist BATCH an exhaustive server flags MOST words
+    # as undefined; if it flagged fewer than half, it capped its errors, so "chunk - undefined" would
+    # invent hundreds of junk fields - trust only positively-signalled fields there. (Small chunks,
+    # e.g. a tiny type's fields, are exempt: a few valid out of a few is normal.)
+    if len(chunk_set) >= 10 and len(undefined) < 0.5 * len(chunk_set):
+        valid = positive
     out: dict[str, dict] = {}
     for f in valid:
         if f in undefined:

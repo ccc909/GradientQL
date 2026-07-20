@@ -56,6 +56,7 @@ class ActionContext:
     tempmail: Any = None
     step: int = 0
     oob_injected_at: int | None = None
+    oob_injected_req: dict[str, Any] | None = None
     tokens: dict[str, Any] = field(default_factory=lambda: {
         "input": 0, "output": 0, "reasoning": 0, "total": 0, "cost": 0.0, "calls": 0})
 

@@ -168,6 +168,7 @@ def _auto_oob_check(ctx: ActionContext) -> None:
     Clears ctx.oob_injected_at so a check fires only once per injection.
     """
     ctx.oob_injected_at = None
+    inj_req = ctx.oob_injected_req  # the request that carried the OOB URL (for a real copy-curl)
     try:
         hits = ctx.oob_sess.reconcile()
     except Exception:  # noqa: BLE001
@@ -176,7 +177,7 @@ def _auto_oob_check(ctx: ActionContext) -> None:
         ix = h.get("interaction", {}) if isinstance(h, dict) else {}
         proto = ix.get("protocol", "?")
         if ctx.record(f"Blind SSRF / OOB interaction ({proto}) confirmed", "endpoint",
-                      f"OOB {proto} callback from {ix.get('remote-address', '?')}", 3.0):
+                      f"OOB {proto} callback from {ix.get('remote-address', '?')}", 3.0, req=inj_req):
             ctx.log(f"[{ctx.step}] ⚠ AUTO-OOB: blind SSRF/XXE CONFIRMED ({proto} callback)")
 
 
@@ -270,6 +271,17 @@ def run(settings: dict[str, Any], schema_map: dict[str, Any], target_url: str, b
         from .fingerprint import detect_frameworks
         for _fwfact in detect_frameworks(schema_map):
             ctx.facts.append(_fwfact)
+        _sess = getattr(ctx.client, "session", None)
+        if _sess is not None and settings.get("scanner", {}).get("tuning", {}).get("engine_fingerprint", True):
+            try:
+                from ..utils.engine_fingerprint import engine_note, fingerprint_engine
+                _eng = fingerprint_engine(target_url, session=_sess, headers=dict(ctx.identity or {}))
+                _note = engine_note(_eng)
+                if _note:
+                    ctx.facts.append(_note)
+                    logger.info("AGENT: engine fingerprinted as %s", _eng)
+            except Exception as e:  # noqa: BLE001
+                logger.info("AGENT: engine fingerprint skipped (%s)", e)
         if settings.get("scanner", {}).get("tuning", {}).get("preflight_plan", True) \
                 and field_count(schema_map) > 0 and not (should_stop is not None and should_stop()):
             _seed_preflight_plan(llm, ctx, target_url, settings, schema_map)

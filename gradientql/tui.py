@@ -538,9 +538,12 @@ def _finding_curl(finding: dict[str, Any]) -> str:
     headers = req.get("headers") or {"Content-Type": "application/json"}
     parts = ["curl -sk -X POST " + shlex.quote(str(url))]
     for k, v in headers.items():
-        if str(k).lower() in ("content-length", "host"):
+        if str(k).lower() in ("content-length", "host", "cookie"):
             continue
         parts.append("-H " + shlex.quote(f"{k}: {v}"))
+    cookies = req.get("cookies") or {}
+    if cookies:
+        parts.append("-b " + shlex.quote("; ".join(f"{k}={v}" for k, v in cookies.items())))
     parts.append("-d " + shlex.quote(json.dumps(payload)))
     return " \\\n  ".join(parts)
 
